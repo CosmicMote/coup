@@ -3,14 +3,44 @@ from coup.constants import Action, Character, EventType
 from coup.models import Card, Player, ActionContext, GameState
 from coup import rules
 
-# Characters that can be blocked and what can block them — used in prompts
-_BLOCK_CHARS_DISPLAY: dict[Action, str] = {
-    Action.FOREIGN_AID: "Duke",
-    Action.ASSASSINATE: "Contessa",
-    Action.STEAL:       "Captain or Ambassador",
+# Emoji per character — shown next to card names throughout the UI
+_CHAR_ICON: dict[Character, str] = {
+    Character.DUKE:       "👑",
+    Character.ASSASSIN:   "🗡️",
+    Character.CAPTAIN:    "⚓",
+    Character.AMBASSADOR: "🤝",
+    Character.CONTESSA:   "💎",
 }
 
-_SEP = "-" * 60
+# Emoji per action — shown next to action names throughout the UI
+_ACTION_ICON: dict[Action, str] = {
+    Action.INCOME:      "💰",
+    Action.FOREIGN_AID: "🤲",
+    Action.TAX:         "💸",
+    Action.STEAL:       "🦝",
+    Action.ASSASSINATE: "🗡️",
+    Action.EXCHANGE:    "🔄",
+    Action.COUP:        "💥",
+}
+
+# Characters that can be blocked and what can block them — used in prompts
+_BLOCK_CHARS_DISPLAY: dict[Action, str] = {
+    Action.FOREIGN_AID: f"{_CHAR_ICON[Character.DUKE]} Duke",
+    Action.ASSASSINATE: f"{_CHAR_ICON[Character.CONTESSA]} Contessa",
+    Action.STEAL:       f"{_CHAR_ICON[Character.CAPTAIN]} Captain or {_CHAR_ICON[Character.AMBASSADOR]} Ambassador",
+}
+
+_SEP = "─" * 60
+
+
+def _char(c: Character) -> str:
+    """Return 'Icon Name' for a character."""
+    return f"{_CHAR_ICON[c]} {c.value}"
+
+
+def _action(a: Action) -> str:
+    """Return 'Icon Name' for an action."""
+    return f"{_ACTION_ICON[a]} {a.value}"
 
 
 class CliUI:
@@ -25,7 +55,7 @@ class CliUI:
 
     def setup_players(self, num_players: int) -> list[tuple[str, bool]]:
         print(_SEP)
-        print("  COUP — Player Setup")
+        print("  🎮  COUP — Player Setup")
         print(_SEP)
         configs: list[tuple[str, bool]] = []
         for i in range(1, num_players + 1):
@@ -48,15 +78,17 @@ class CliUI:
         legal = rules.legal_actions(player)
         print(f"\n  {player.name}, choose your action:")
         for idx, action in enumerate(legal, 1):
-            print(f"    {idx}. {action.value}")
+            print(f"    {idx}. {_action(action)}")
         choice = self._prompt_index(len(legal))
         return legal[choice]
 
     def choose_target(self, state: GameState, player: Player, action: Action) -> Player:
         targets = [p for p in state.active_players if p is not player]
-        print(f"\n  Choose a target for {action.value}:")
+        print(f"\n  Choose a target for {_action(action)}:")
         for idx, p in enumerate(targets, 1):
-            print(f"    {idx}. {p.name}  (coins: {p.coins}, influence: {p.influence_count})")
+            coins_str = "🪙" * p.coins if p.coins <= 10 else f"🪙×{p.coins}"
+            inf_str = "❤️" * p.influence_count
+            print(f"    {idx}. {p.name}  {coins_str}  {inf_str}")
         choice = self._prompt_index(len(targets))
         return targets[choice]
 
@@ -73,17 +105,17 @@ class CliUI:
         chars_str = _BLOCK_CHARS_DISPLAY.get(ctx.action, "a character")
         print(
             f"\n  {potential_blocker.name}: {ctx.actor.name} is attempting "
-            f"{ctx.action.value}. Block with {chars_str}?"
+            f"{_action(ctx.action)}. 🛡️ Block with {chars_str}?"
         )
-        print("    1. Block")
-        print("    2. Pass")
+        print("    1. 🛡️  Block")
+        print("    2.    Pass")
         choice = self._prompt_index(2)
         if choice == 0:  # Block
             if len(blocking_chars) == 1:
                 return blocking_chars[0]
             print("  Which character do you claim?")
             for idx, char in enumerate(blocking_chars, 1):
-                print(f"    {idx}. {char.value}")
+                print(f"    {idx}. {_char(char)}")
             char_choice = self._prompt_index(len(blocking_chars))
             return blocking_chars[char_choice]
         return None
@@ -98,8 +130,8 @@ class CliUI:
             # Actor challenging a block
             print(
                 f"\n  {potential_challenger.name}: {ctx.blocker.name} claims "
-                f"{ctx.block_claimed_character.value} to block your "  # type: ignore[union-attr]
-                f"{ctx.action.value}. Challenge?"
+                f"{_char(ctx.block_claimed_character)} to block your "  # type: ignore[union-attr]
+                f"{_action(ctx.action)}. ⚔️  Challenge?"
             )
         else:
             # Opponent challenging an action
@@ -107,13 +139,13 @@ class CliUI:
             if claimed:
                 print(
                     f"\n  {potential_challenger.name}: {ctx.actor.name} claims "
-                    f"{claimed.value} for {ctx.action.value}. Challenge?"
+                    f"{_char(claimed)} for {_action(ctx.action)}. ⚔️  Challenge?"
                 )
             else:
                 return False
 
-        print("    1. Challenge")
-        print("    2. Pass")
+        print("    1. ⚔️  Challenge")
+        print("    2.    Pass")
         choice = self._prompt_index(2)
         return choice == 0
 
@@ -123,10 +155,10 @@ class CliUI:
         alive = player.alive_cards
         if len(alive) == 1:
             return alive[0]
-        print(f"\n  {player.name}, you must lose an influence ({reason}).")
+        print(f"\n  💀 {player.name}, you must lose an influence ({reason}).")
         print("  Choose which card to reveal:")
         for idx, card in enumerate(alive, 1):
-            print(f"    {idx}. {card.character.value}")
+            print(f"    {idx}. {_char(card.character)}")
         choice = self._prompt_index(len(alive))
         return alive[choice]
 
@@ -137,10 +169,10 @@ class CliUI:
         all_cards: list[Card],
     ) -> list[Card]:
         keep_count = player.influence_count
-        print(f"\n  {player.name}: Ambassador exchange — choose {keep_count} card(s) to keep.")
+        print(f"\n  🔄 {player.name}: Ambassador exchange — choose {keep_count} card(s) to keep.")
         print("  Available cards:")
         for idx, card in enumerate(all_cards, 1):
-            print(f"    {idx}. {card.character.value}")
+            print(f"    {idx}. {_char(card.character)}")
 
         kept: list[Card] = []
         chosen_indices: set[int] = set()
@@ -191,112 +223,118 @@ class CliUI:
 
     def _on_turn_start(self, player: Player, state: GameState, **_) -> None:
         print(f"\n{_SEP}")
-        print(f"  Turn {state.turn_number + 1} — {player.name}'s turn  (coins: {player.coins})")
+        coins_str = ("🪙" * player.coins) if player.coins <= 10 else f"🪙×{player.coins}"
+        coins_str = coins_str or "broke"
+        print(f"  🎲 Turn {state.turn_number + 1} — {player.name}'s turn  {coins_str}")
         self._print_scoreboard(state)
 
     def _on_action_declared(self, ctx: ActionContext, state: GameState, **_) -> None:
         actor = ctx.actor
-        action = ctx.action
-        target_str = f" targeting {ctx.target.name}" if ctx.target else ""
-        char_str = f" (claiming {ctx.claimed_character.value})" if ctx.claimed_character else ""
-        print(f"  >> {actor.name} declares {action.value}{char_str}{target_str}.")
+        target_str = f" → {ctx.target.name}" if ctx.target else ""
+        char_str = f" (claiming {_char(ctx.claimed_character)})" if ctx.claimed_character else ""
+        print(f"  ▶  {actor.name} declares {_action(ctx.action)}{char_str}{target_str}.")
 
     def _on_challenge_issued(self, ctx: ActionContext, state: GameState, **_) -> None:
         print(
-            f"  !! {ctx.challenger.name} challenges {ctx.actor.name}'s "
-            f"claim of {ctx.claimed_character.value}!"  # type: ignore[union-attr]
+            f"  ⚔️  {ctx.challenger.name} challenges {ctx.actor.name}'s "
+            f"claim of {_char(ctx.claimed_character)}!"  # type: ignore[union-attr]
         )
 
     def _on_challenge_won(self, ctx: ActionContext, state: GameState, **_) -> None:
-        print(f"  ** Challenge succeeded! {ctx.actor.name} was bluffing.")
+        print(f"  ✅ Challenge succeeded! {ctx.actor.name} was bluffing.")
 
     def _on_challenge_lost(
         self, ctx: ActionContext, player_proved: Player, proved_card: Card, state: GameState, **_
     ) -> None:
         print(
-            f"  ** Challenge failed! {player_proved.name} reveals "
-            f"{proved_card.character.value} and shuffles it back."
+            f"  😬 Challenge failed! {player_proved.name} reveals "
+            f"{_char(proved_card.character)} and shuffles it back."
         )
 
     def _on_block_declared(self, ctx: ActionContext, state: GameState, **_) -> None:
         print(
-            f"  >> {ctx.blocker.name} claims {ctx.block_claimed_character.value} "  # type: ignore[union-attr]
-            f"to block {ctx.actor.name}'s {ctx.action.value}!"
+            f"  🛡️  {ctx.blocker.name} claims {_char(ctx.block_claimed_character)} "  # type: ignore[union-attr]
+            f"to block {ctx.actor.name}'s {_action(ctx.action)}!"
         )
 
     def _on_block_challenge_issued(self, ctx: ActionContext, state: GameState, **_) -> None:
         print(
-            f"  !! {ctx.actor.name} challenges {ctx.blocker.name}'s "  # type: ignore[union-attr]
-            f"claim of {ctx.block_claimed_character.value}!"  # type: ignore[union-attr]
+            f"  ⚔️  {ctx.actor.name} challenges {ctx.blocker.name}'s "  # type: ignore[union-attr]
+            f"claim of {_char(ctx.block_claimed_character)}!"  # type: ignore[union-attr]
         )
 
     def _on_block_challenge_won(self, ctx: ActionContext, state: GameState, **_) -> None:
-        print(f"  ** Block challenge succeeded! {ctx.blocker.name} was bluffing.")  # type: ignore[union-attr]
+        print(f"  ✅ Block challenge succeeded! {ctx.blocker.name} was bluffing.")  # type: ignore[union-attr]
 
     def _on_block_challenge_lost(
         self, ctx: ActionContext, player_proved: Player, proved_card: Card, state: GameState, **_
     ) -> None:
         print(
-            f"  ** Block challenge failed! {player_proved.name} reveals "
-            f"{proved_card.character.value} and shuffles it back."
+            f"  😬 Block challenge failed! {player_proved.name} reveals "
+            f"{_char(proved_card.character)} and shuffles it back."
         )
 
     def _on_influence_lost(
         self, player: Player, card: Card, reason: str, state: GameState, **_
     ) -> None:
-        print(f"  -- {player.name} reveals {card.character.value} ({reason}).")
+        print(f"  💀 {player.name} reveals {_char(card.character)} ({reason}).")
 
     def _on_player_eliminated(self, player: Player, state: GameState, **_) -> None:
-        print(f"  XX {player.name} has been eliminated!")
+        print(f"  ☠️  {player.name} has been eliminated!")
 
     def _on_action_executed(self, ctx: ActionContext, state: GameState, **_) -> None:
         actor = ctx.actor
         action = ctx.action
+        coins_str = f"🪙×{actor.coins}" if actor.coins > 10 else "🪙" * actor.coins
         if action == Action.INCOME:
-            print(f"  => {actor.name} takes 1 coin.  (total: {actor.coins})")
+            print(f"  💰 {actor.name} takes 1 coin.  ({coins_str})")
         elif action == Action.FOREIGN_AID:
-            print(f"  => {actor.name} takes 2 coins.  (total: {actor.coins})")
+            print(f"  🤲 {actor.name} takes 2 coins.  ({coins_str})")
         elif action == Action.TAX:
-            print(f"  => {actor.name} collects tax: 3 coins.  (total: {actor.coins})")
+            print(f"  💸 {actor.name} collects tax: 3 coins.  ({coins_str})")
         elif action == Action.STEAL:
-            print(f"  => {actor.name} steals from {ctx.target.name}.")  # type: ignore[union-attr]
+            print(f"  🦝 {actor.name} steals from {ctx.target.name}.")  # type: ignore[union-attr]
         elif action == Action.COUP:
-            print(f"  => {actor.name} stages a Coup against {ctx.target.name}.")  # type: ignore[union-attr]
+            print(f"  💥 {actor.name} stages a Coup against {ctx.target.name}.")  # type: ignore[union-attr]
         elif action == Action.ASSASSINATE:
-            print(f"  => {actor.name} assassinates {ctx.target.name}.")  # type: ignore[union-attr]
+            print(f"  🗡️  {actor.name} assassinates {ctx.target.name}.")  # type: ignore[union-attr]
         elif action == Action.EXCHANGE:
-            print(f"  => {actor.name} completes an Ambassador exchange.")
+            print(f"  🔄 {actor.name} completes an Ambassador exchange.")
 
     def _on_action_blocked(self, ctx: ActionContext, state: GameState, **_) -> None:
         print(
-            f"  -- {ctx.action.value} by {ctx.actor.name} was blocked by "
+            f"  🚫 {_action(ctx.action)} by {ctx.actor.name} was blocked by "
             f"{ctx.blocker.name}."  # type: ignore[union-attr]
         )
 
     def _on_action_failed(self, ctx: ActionContext, state: GameState, **_) -> None:
-        print(f"  -- {ctx.actor.name}'s {ctx.action.value} failed (lost challenge).")
+        print(f"  ❌ {ctx.actor.name}'s {_action(ctx.action)} failed (lost challenge).")
 
     def _on_game_over(self, winner: Player, state: GameState, **_) -> None:
-        print(f"\n{'=' * 60}")
-        print(f"  GAME OVER — {winner.name} wins!")
-        print(f"{'=' * 60}\n")
+        print(f"\n{'═' * 60}")
+        print(f"  🏆  GAME OVER — {winner.name} wins!")
+        print(f"{'═' * 60}\n")
 
     # ------------------------------------------------------------------ #
     #  Display helpers                                                     #
     # ------------------------------------------------------------------ #
 
     def _print_state(self, state: GameState, viewing_player: Player | None = None) -> None:
-        print(f"\n  Your hand: {', '.join(c.character.value for c in viewing_player.alive_cards)}"
-              if viewing_player else "")
+        if viewing_player:
+            hand_str = "  ".join(_char(c.character) for c in viewing_player.alive_cards)
+            print(f"\n  Your hand: {hand_str}")
 
     def _print_scoreboard(self, state: GameState) -> None:
         parts = []
         for p in state.players:
             if p.is_alive:
-                parts.append(f"{p.name}: {p.coins}c, {p.influence_count}inf")
+                coins_str = ("🪙" * p.coins) if p.coins <= 10 else f"🪙×{p.coins}"
+                coins_str = coins_str or "broke"
+                inf_str = "❤️" * p.influence_count
+                parts.append(f"{p.name}: {coins_str} {inf_str}")
             else:
-                parts.append(f"{p.name}: eliminated")
-        print("  " + " | ".join(parts))
+                parts.append(f"{p.name}: ☠️")
+        print("  " + "  │  ".join(parts))
 
     def _prompt_index(self, count: int) -> int:
         """Prompt for a 1-based choice from 1..count. Returns 0-based index."""

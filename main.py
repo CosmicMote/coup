@@ -1,5 +1,13 @@
 import argparse
 import random
+import sys
+
+# Ensure emoji and Unicode box-drawing characters render on all terminals
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stdin, "reconfigure"):
+    sys.stdin.reconfigure(encoding="utf-8")
+
 from coup.models import GameState, Card, Player
 from coup.constants import Character
 from coup.engine import GameEngine
