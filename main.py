@@ -28,13 +28,18 @@ def main() -> None:
         "--players", type=int, default=4,
         help="Total number of players (2–6, default 4)"
     )
+    parser.add_argument(
+        "--pause", type=float, nargs="?", const=1.0, default=0.0, metavar="SECONDS",
+        help="Pause after each CPU action so you can follow along "
+             "(default delay: 1.0s when flag is given without a value)"
+    )
     args = parser.parse_args()
 
     if not (2 <= args.players <= 6):
         print("Error: --players must be between 2 and 6.")
         raise SystemExit(1)
 
-    ui = CliUI()
+    ui = CliUI(pause_seconds=args.pause)
     player_configs = ui.setup_players(args.players)  # [(name, is_human), ...]
 
     deck = build_deck()

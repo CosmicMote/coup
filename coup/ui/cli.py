@@ -1,5 +1,6 @@
 from __future__ import annotations
 import random
+import time
 from coup.constants import Action, Character, EventType
 from coup.models import Card, Player, ActionContext, GameState
 from coup import rules
@@ -58,6 +59,9 @@ class CliUI:
     Terminal-based UI.  All print() and input() calls live exclusively here.
     Satisfies UIProtocol structurally (no import of base.py needed at runtime).
     """
+
+    def __init__(self, pause_seconds: float = 0.0) -> None:
+        self._pause_seconds = pause_seconds
 
     # ------------------------------------------------------------------ #
     #  Setup                                                               #
@@ -312,15 +316,18 @@ class CliUI:
             print(f"  🗡️  {actor.name} assassinates {ctx.target.name}.")  # type: ignore[union-attr]
         elif action == Action.EXCHANGE:
             print(f"  🔄 {actor.name} completes an Ambassador exchange.")
+        self._cpu_pause(actor)
 
     def _on_action_blocked(self, ctx: ActionContext, state: GameState, **_) -> None:
         print(
             f"  🚫 {_action(ctx.action)} by {ctx.actor.name} was blocked by "
             f"{ctx.blocker.name}."  # type: ignore[union-attr]
         )
+        self._cpu_pause(ctx.actor)
 
     def _on_action_failed(self, ctx: ActionContext, state: GameState, **_) -> None:
         print(f"  ❌ {ctx.actor.name}'s {_action(ctx.action)} failed (lost challenge).")
+        self._cpu_pause(ctx.actor)
 
     def _on_game_over(self, winner: Player, state: GameState, **_) -> None:
         print(f"\n{'═' * 60}")
@@ -347,6 +354,13 @@ class CliUI:
             else:
                 parts.append(f"{p.name}: ☠️")
         print("  " + "  │  ".join(parts))
+
+    def _cpu_pause(self, actor: Player) -> None:
+        """Pause briefly after a CPU turn so human players can read the output."""
+        if self._pause_seconds > 0 and not actor.is_human:
+            print(f"  ⏸  ({self._pause_seconds:g}s)", end="", flush=True)
+            time.sleep(self._pause_seconds)
+            print()  # newline after sleep completes
 
     def _prompt_index(self, count: int) -> int:
         """Prompt for a 1-based choice from 1..count. Returns 0-based index."""
