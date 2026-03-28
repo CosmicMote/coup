@@ -90,7 +90,6 @@ class CliUI:
     # ------------------------------------------------------------------ #
 
     def choose_action(self, state: GameState, player: Player) -> Action:
-        self._print_state(state, viewing_player=player)
         legal = rules.legal_actions(player)
         print(f"\n  {player.name}, choose your action:")
         for idx, action in enumerate(legal, 1):
@@ -243,6 +242,13 @@ class CliUI:
         coins_str = coins_str or "broke"
         print(f"  🎲 Turn {state.turn_number + 1} — {player.name}'s turn  {coins_str}")
         self._print_scoreboard(state)
+        # Show the human's hand only when there is exactly one human in the game,
+        # so there is no risk of revealing cards to a second human at the same screen.
+        human_players = [p for p in state.players if p.is_human and p.is_alive]
+        if len(human_players) == 1:
+            human = human_players[0]
+            hand_str = "  ".join(_char(c.character) for c in human.alive_cards)
+            print(f"  🃏 {human.name}'s hand: {hand_str}")
 
     def _on_action_declared(self, ctx: ActionContext, state: GameState, **_) -> None:
         actor = ctx.actor
@@ -337,11 +343,6 @@ class CliUI:
     # ------------------------------------------------------------------ #
     #  Display helpers                                                     #
     # ------------------------------------------------------------------ #
-
-    def _print_state(self, state: GameState, viewing_player: Player | None = None) -> None:
-        if viewing_player:
-            hand_str = "  ".join(_char(c.character) for c in viewing_player.alive_cards)
-            print(f"\n  Your hand: {hand_str}")
 
     def _print_scoreboard(self, state: GameState) -> None:
         parts = []
