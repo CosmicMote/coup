@@ -124,6 +124,9 @@ class GameEngine:
     def _open_block_window(self, ctx: ActionContext) -> bool:
         """Poll eligible opponents. First blocker wins. Returns True if blocked."""
         for player in self._opponents_in_order(ctx.actor):
+            # A player who already challenged this action and lost cannot also block
+            if player is ctx.challenger:
+                continue
             # ASSASSINATE and STEAL can only be blocked by the target
             if ctx.action in rules.BLOCK_RESTRICTED_TO_TARGET and player is not ctx.target:
                 continue
