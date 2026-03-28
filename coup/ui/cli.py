@@ -1,7 +1,17 @@
 from __future__ import annotations
+import random
 from coup.constants import Action, Character, EventType
 from coup.models import Card, Player, ActionContext, GameState
 from coup import rules
+
+# Names for CPU players — political schemers and nobles in the spirit of Coup
+_CPU_NAMES: list[str] = [
+    "Machiavelli", "Borgia", "Medici", "Richelieu", "Talleyrand",
+    "Metternich",  "Bismarck", "Cavour", "Fouché",   "Mazarin",
+    "Colbert",     "Walpole",  "Disraeli", "Metella", "Agrippina",
+    "Lucrezia",    "Sforza",   "Gonzaga",  "Visconti", "Farnese",
+    "Orsini",      "Colonna",  "Pazzi",    "Albizzi",  "Strozzi",
+]
 
 # Emoji per character — shown next to card names throughout the UI
 _CHAR_ICON: dict[Character, str] = {
@@ -57,13 +67,15 @@ class CliUI:
         print(_SEP)
         print("  🎮  COUP — Player Setup")
         print(_SEP)
+        cpu_name_pool = random.sample(_CPU_NAMES, min(num_players, len(_CPU_NAMES)))
+        cpu_name_iter = iter(cpu_name_pool)
         configs: list[tuple[str, bool]] = []
         for i in range(1, num_players + 1):
             name = input(f"  Player {i} name (blank = CPU): ").strip()
             if name:
                 is_human = True
             else:
-                name = f"CPU-{i}"
+                name = next(cpu_name_iter, f"CPU-{i}")
                 is_human = False
             configs.append((name, is_human))
         print(_SEP)
