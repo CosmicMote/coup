@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import random
 import sys
 
@@ -14,6 +15,17 @@ from coup.engine import GameEngine
 from coup.ui.cli import CliUI
 from coup.ai import AIStrategy
 from coup.simulation import run_simulation, SlotStats
+
+
+def _tendency_from_name(name: str) -> int:
+    """Derive a stable 0–99 bluff tendency from a CPU player's name.
+
+    Uses MD5 rather than Python's built-in hash() because hash() is
+    randomised per-process (PYTHONHASHSEED), which would give a different
+    tendency every run.  MD5 is deterministic regardless of environment.
+    """
+    digest = hashlib.md5(name.encode()).hexdigest()
+    return int(digest, 16) % 100
 
 
 def build_deck() -> list[Card]:
@@ -86,7 +98,7 @@ def run_interactive_mode(num_players: int, pause_seconds: float) -> None:
     state = GameState(players=players, deck=deck)
 
     ai_players = {
-        p.player_id: AIStrategy(p, bluff_tendency=random.randint(0, 100))
+        p.player_id: AIStrategy(p, bluff_tendency=_tendency_from_name(p.name))
         for p in players if not p.is_human
     }
 
