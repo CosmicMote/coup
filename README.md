@@ -35,58 +35,118 @@ If exactly one human player is in the game, your hand is shown at the start of e
 
 ## Simulation Mode
 
-Simulation mode runs many CPU-only games automatically to measure which bluff tendency performs best. All human interaction is suppressed and results are reported as win counts and percentages.
+Simulation mode runs many CPU-only games automatically to answer questions like:
+
+- Which bluff tendency wins most often?
+- Does going first give a seat advantage?
+- Does starting with certain cards help?
+
+All configuration is provided via a JSON config file:
 
 ```bash
-python main.py --simulate                                      # default: 5 players (tendencies 0 25 50 75 100), 100 games
-python main.py --simulate --games 1000                         # 1 000 games with default tendencies
-python main.py --simulate --tendencies 0 50 100               # 3 players, 100 games
-python main.py --simulate --tendencies 0 25 50 75 100 --games 2000
+python main.py --simulate sim.json
+python main.py --generate-config        # print a sample config file with field notes
 ```
 
-### Options
+### Config file format
 
-| Flag | Default | Description |
+```json
+{
+  "games": 500,
+  "seat_order": "random",
+  "players": [
+    { "name": "Honest",    "bluff_tendency": 0,   "starting_cards": null },
+    { "name": "Balanced",  "bluff_tendency": 50,  "starting_cards": null },
+    { "name": "Reckless",  "bluff_tendency": 100, "starting_cards": null },
+    { "name": "LuckyDuke", "bluff_tendency": 50,  "starting_cards": ["Duke", "Duke"] }
+  ]
+}
+```
+
+All fields are optional within each player entry — omit or set `null` to use random values.
+
+| Field | Default | Description |
 |---|---|---|
-| `--simulate` | — | Enable simulation mode |
-| `--tendencies T [T ...]` | `0 25 50 75 100` | Bluff tendency for each CPU player (2–6 values, 0–100 each) |
-| `--games N` | `100` | Number of games to simulate |
+| `games` | `100` | Number of games to simulate |
+| `seat_order` | `"random"` | `"random"` — reshuffle seating each game; `"fixed"` — keep seats constant |
+| `name` | random | Display name; omit for a random historical name |
+| `bluff_tendency` | random | 0–100; omit for a fresh random value each game |
+| `starting_cards` | random | `["Duke", "Captain"]` to fix the starting hand; omit for random |
+
+Valid character names: `Duke`, `Assassin`, `Captain`, `Ambassador`, `Contessa`. A maximum of 3 players may request the same character (deck contains 3 copies of each).
 
 ### How it works
 
-- Each value passed to `--tendencies` defines one CPU player. The number of values determines the player count.
-- Player **seating order is reshuffled every game** so that going-first advantage does not skew the results.
+- **`seat_order: "random"`** — seating is reshuffled every game so that going-first advantage does not skew tendency comparisons.
+- **`seat_order: "fixed"`** — players sit in the same seat every game, allowing first-mover advantage to be measured directly.
 - Progress is printed at every 10% increment with a visual progress bar.
-- The final report lists each player's win count and win percentage, sorted from most to fewest wins.
+- The final report is sorted by **seat order** when seating is fixed, or by **win count descending** when seating is random.
 
-### Example output
+### Example: comparing bluff tendencies
 
-```
-  Running 2,000 simulations with 5 players...
-  Tendencies: [0, 25, 50, 75, 100]
-
-  [ 200/2000]   10.0%  ▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░
-  [ 400/2000]   20.0%  ▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░
-  ...
-  [2000/2000]  100.0%  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
-
-  Simulation complete — 2,000 games
-
-  ──────────────────────────────────────────────────────────
-  Slot   Tendency  Personality             Wins   Win %
-  ──────────────────────────────────────────────────────────
-  A             0  😇 Straight-laced       1090   54.5%
-  B            25  🤔 Cautious              412   20.6%
-  C            50  😏 Balanced              240   12.0%
-  D            75  😈 Bold                  146    7.3%
-  E           100  🎲 Reckless              112    5.6%
-  ──────────────────────────────────────────────────────────
+`sim_tendencies.json`:
+```json
+{ "games": 1000, "seat_order": "random",
+  "players": [
+    { "name": "Honest",   "bluff_tendency": 0   },
+    { "name": "Cautious", "bluff_tendency": 25  },
+    { "name": "Balanced", "bluff_tendency": 50  },
+    { "name": "Bold",     "bluff_tendency": 75  },
+    { "name": "Reckless", "bluff_tendency": 100 }
+  ] }
 ```
 
-You can use duplicate tendency values to test multiple agents with the same style:
+```
+  Simulation complete — 1,000 games  (random seating)
 
-```bash
-python main.py --simulate --tendencies 0 0 50 50 100 100 --games 500
+  ────────────────────────────────────────────────────────────────────────────
+  Slot  Name      Tendency   Personality           Starting Cards  Wins   Win%
+  ────────────────────────────────────────────────────────────────────────────
+  A     Honest    0          😇 Straight-laced      random          545   54.5%
+  B     Cautious  25         🤔 Cautious            random          206   20.6%
+  C     Balanced  50         😏 Balanced            random          120   12.0%
+  D     Bold      75         😈 Bold                random           73    7.3%
+  E     Reckless  100        🎲 Reckless            random           56    5.6%
+  ────────────────────────────────────────────────────────────────────────────
+```
+
+### Example: measuring first-mover advantage
+
+`sim_first_mover.json`:
+```json
+{ "games": 500, "seat_order": "fixed",
+  "players": [
+    { "name": "Seat1", "bluff_tendency": 50 },
+    { "name": "Seat2", "bluff_tendency": 50 },
+    { "name": "Seat3", "bluff_tendency": 50 },
+    { "name": "Seat4", "bluff_tendency": 50 }
+  ] }
+```
+
+```
+  Simulation complete — 500 games  (fixed seating)
+
+  ───────────────────────────────────────────────────────────────────────
+  Slot  Seat   Name   Tendency   Personality           Starting Cards Wins   Win%
+  ───────────────────────────────────────────────────────────────────────
+  A     1      Seat1  50         😏 Balanced            random          116   23.2%
+  B     2      Seat2  50         😏 Balanced            random          124   24.8%
+  C     3      Seat3  50         😏 Balanced            random          122   24.4%
+  D     4      Seat4  50         😏 Balanced            random          138   27.6%
+  ───────────────────────────────────────────────────────────────────────
+```
+
+### Example: testing starting cards
+
+`sim_starting_cards.json`:
+```json
+{ "games": 500, "seat_order": "random",
+  "players": [
+    { "name": "DukeCaptain",  "bluff_tendency": 50, "starting_cards": ["Duke", "Captain"] },
+    { "name": "DukeAssassin", "bluff_tendency": 50, "starting_cards": ["Duke", "Assassin"] },
+    { "name": "RandomHand",   "bluff_tendency": 50 },
+    { "name": "RandomHand2",  "bluff_tendency": 50 }
+  ] }
 ```
 
 ---
