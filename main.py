@@ -51,9 +51,16 @@ def main() -> None:
     state = GameState(players=players, deck=deck)
 
     ai_players = {
-        p.player_id: AIStrategy(p)
+        p.player_id: AIStrategy(p, bluff_tendency=random.randint(0, 100))
         for p in players if not p.is_human
     }
+
+    # Announce CPU personalities so the human can size up their opponents
+    if ai_players:
+        print("  CPU personalities:")
+        for ai in ai_players.values():
+            print(f"    {ai.player.name}: {ai.personality_label} (bluff tendency {ai.bluff_tendency})")
+        print()
 
     engine = GameEngine(state=state, ui=ui, ai_players=ai_players)
     engine.run()

@@ -16,7 +16,14 @@ _CHAR_SCORE: dict[Character, int] = {
 
 class AIStrategy:
     """
-    Default CPU strategy: legal random play with light heuristics.
+    CPU strategy with a configurable bluff_tendency (0–100).
+
+    bluff_tendency controls three interrelated behaviours:
+      - Action selection: higher tendency → more willing to claim characters
+        the player does not actually hold.
+      - Blocking:         higher tendency → more willing to bluff-block.
+      - Challenging:      higher tendency → slightly more paranoid / trigger-happy
+        (a serial bluffer assumes opponents bluff freely too).
 
     The AI only uses information it would legitimately know:
       - Its own hand (unrevealed cards)
@@ -24,8 +31,24 @@ class AIStrategy:
     It does NOT peek at opponents' hidden cards.
     """
 
-    def __init__(self, player: Player) -> None:
+    _PERSONALITY_LABELS: list[tuple[int, str]] = [
+        (20, "😇 Straight-laced"),
+        (40, "🤔 Cautious"),
+        (60, "😏 Balanced"),
+        (80, "😈 Bold"),
+        (100, "🎲 Reckless"),
+    ]
+
+    def __init__(self, player: Player, bluff_tendency: int = 50) -> None:
         self.player = player
+        self.bluff_tendency = max(0, min(100, bluff_tendency))
+
+    @property
+    def personality_label(self) -> str:
+        for threshold, label in self._PERSONALITY_LABELS:
+            if self.bluff_tendency <= threshold:
+                return label
+        return self._PERSONALITY_LABELS[-1][1]
 
     # ------------------------------------------------------------------ #
     #  Action selection                                                    #
@@ -43,8 +66,14 @@ class AIStrategy:
             if random.random() < 0.85:
                 return Action.COUP, self._pick_target(state, Action.COUP)
 
-        # Weight actions: prefer those that match a card we actually hold
+        # Weight actions by honesty vs. bluff tendency.
+        # Honest weight (holding the card) = 4; general actions = 2.
+        # Bluff weight scales linearly with bluff_tendency:
+        #   tendency 0   → 0.0  (never bluff)
+        #   tendency 50  → 2.0  (half as likely as honest)
+        #   tendency 100 → 4.0  (just as likely as honest)
         our_chars = {c.character for c in self.player.alive_cards}
+        bluff_weight = (self.bluff_tendency / 100) * 4
         weights = []
         for action in legal:
             claimed = rules.get_claimed_character(action)
@@ -53,7 +82,7 @@ class AIStrategy:
             elif claimed is None:
                 weights.append(2)  # general actions are always safe
             else:
-                weights.append(1)  # bluff — lower weight
+                weights.append(bluff_weight)  # bluff — scaled by tendency
 
         action = random.choices(legal, weights=weights)[0]
         target = self._pick_target(state, action) if rules.requires_target(action) else None
@@ -75,8 +104,12 @@ class AIStrategy:
             if char in our_chars:
                 return char
 
-        # Occasionally bluff-block (15 % chance)
-        if random.random() < 0.15:
+        # Bluff-block probability scales with tendency:
+        #   tendency 0   → 0%   (never bluff-block)
+        #   tendency 50  → 25%
+        #   tendency 100 → 50%
+        bluff_block_prob = (self.bluff_tendency / 100) * 0.5
+        if bluff_block_prob > 0 and random.random() < bluff_block_prob:
             return random.choice(blocking_chars)
 
         return None
@@ -106,6 +139,10 @@ class AIStrategy:
         Decide whether to challenge a claim using only public/own-hand information.
         There are 3 copies of each character in the 15-card deck.
         The more copies we can account for, the more likely the claim is a bluff.
+
+        bluff_tendency also scales the base probabilities: a reckless bluffer
+        assumes opponents bluff freely too, so challenges more aggressively.
+        Scale ranges from 0.75× (tendency 0) to 1.25× (tendency 100).
         """
         our_count = sum(1 for c in self.player.alive_cards if c.character == claimed)
         revealed_count = sum(
@@ -115,13 +152,14 @@ class AIStrategy:
         accounted_for = our_count + revealed_count
 
         if accounted_for >= 3:
-            return True           # impossible — definitely a bluff
-        elif accounted_for == 2:
-            return random.random() < 0.55
-        elif accounted_for == 1:
-            return random.random() < 0.20
-        else:
-            return random.random() < 0.08
+            return True  # impossible — definitely a bluff
+
+        # Base probabilities by how many copies are accounted for
+        base_prob = {2: 0.55, 1: 0.20, 0: 0.08}[accounted_for]
+
+        # Scale by personality: 0.75 at tendency 0, 1.0 at 50, 1.25 at 100
+        scale = 0.75 + (self.bluff_tendency / 200)
+        return random.random() < (base_prob * scale)
 
     # ------------------------------------------------------------------ #
     #  Influence sacrifice                                                 #
