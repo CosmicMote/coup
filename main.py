@@ -136,7 +136,7 @@ def main() -> None:
         help="Number of players for interactive mode (2–6, default 4)"
     )
     parser.add_argument(
-        "--pause", type=float, nargs="?", const=1.0, default=0.0, metavar="SECONDS",
+        "--pause", type=float, nargs="?", const=7.0, default=7.0, metavar="SECONDS",
         help="Pause after each CPU action (default 1.0s when flag given without a value)"
     )
 
