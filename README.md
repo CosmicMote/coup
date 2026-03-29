@@ -27,9 +27,88 @@ python main.py --pause           # pause 1 second after each CPU action
 python main.py --pause 2.5       # pause 2.5 seconds after each CPU action
 ```
 
-At startup you are prompted for each player's name. **Leave a name blank** to make that slot a CPU player. CPU players are given random names drawn from a pool of historical political schemers.
+At startup you are prompted for each player's name. **Leave a name blank** to make that slot a CPU player. CPU players are given random names drawn from a pool of historical political schemers, and each is assigned a random **bluff tendency** (see [CPU Personalities](#cpu-personalities) below).
 
 If exactly one human player is in the game, your hand is shown at the start of every turn so you can make informed decisions about whether to bluff, challenge, or block.
+
+---
+
+## Simulation Mode
+
+Simulation mode runs many CPU-only games automatically to measure which bluff tendency performs best. All human interaction is suppressed and results are reported as win counts and percentages.
+
+```bash
+python main.py --simulate                                      # default: 5 players (tendencies 0 25 50 75 100), 100 games
+python main.py --simulate --games 1000                         # 1 000 games with default tendencies
+python main.py --simulate --tendencies 0 50 100               # 3 players, 100 games
+python main.py --simulate --tendencies 0 25 50 75 100 --games 2000
+```
+
+### Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--simulate` | — | Enable simulation mode |
+| `--tendencies T [T ...]` | `0 25 50 75 100` | Bluff tendency for each CPU player (2–6 values, 0–100 each) |
+| `--games N` | `100` | Number of games to simulate |
+
+### How it works
+
+- Each value passed to `--tendencies` defines one CPU player. The number of values determines the player count.
+- Player **seating order is reshuffled every game** so that going-first advantage does not skew the results.
+- Progress is printed at every 10% increment with a visual progress bar.
+- The final report lists each player's win count and win percentage, sorted from most to fewest wins.
+
+### Example output
+
+```
+  Running 2,000 simulations with 5 players...
+  Tendencies: [0, 25, 50, 75, 100]
+
+  [ 200/2000]   10.0%  ▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░
+  [ 400/2000]   20.0%  ▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░
+  ...
+  [2000/2000]  100.0%  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+
+  Simulation complete — 2,000 games
+
+  ──────────────────────────────────────────────────────────
+  Slot   Tendency  Personality             Wins   Win %
+  ──────────────────────────────────────────────────────────
+  A             0  😇 Straight-laced       1090   54.5%
+  B            25  🤔 Cautious              412   20.6%
+  C            50  😏 Balanced              240   12.0%
+  D            75  😈 Bold                  146    7.3%
+  E           100  🎲 Reckless              112    5.6%
+  ──────────────────────────────────────────────────────────
+```
+
+You can use duplicate tendency values to test multiple agents with the same style:
+
+```bash
+python main.py --simulate --tendencies 0 0 50 50 100 100 --games 500
+```
+
+---
+
+## CPU Personalities
+
+Each CPU player is assigned a random **bluff tendency** (0–100) at the start of a game. This single value shapes their entire play style:
+
+| Tendency | Personality | Action bluffs | Bluff-blocks | Challenge rate |
+|---|---|---|---|---|
+| 0–20 | 😇 Straight-laced | Never | Never | Lower |
+| 21–40 | 🤔 Cautious | Rarely | Rarely | Slightly lower |
+| 41–60 | 😏 Balanced | Sometimes | Sometimes | Neutral |
+| 61–80 | 😈 Bold | Often | Often | Slightly higher |
+| 81–100 | 🎲 Reckless | Frequently | Frequently | Higher |
+
+Specifically:
+- **Action weight for bluffs** scales from `0` (tendency 0, never bluff) to `4` (tendency 100, equally weighted with honest plays).
+- **Bluff-block probability** scales from `0%` to `50%`.
+- **Challenge probability** is scaled by `0.75×` at tendency 0 up to `1.25×` at tendency 100 — a reckless bluffer assumes opponents bluff freely too.
+
+CPU personalities are announced before the first turn so you can size up your opponents.
 
 ---
 
