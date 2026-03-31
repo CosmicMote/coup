@@ -55,10 +55,10 @@ python main.py --generate-config        # print a sample config file with field 
   "games": 500,
   "seat_order": "random",
   "players": [
-    { "name": "Honest",    "bluff_tendency": 0,   "starting_cards": null },
-    { "name": "Balanced",  "bluff_tendency": 50,  "starting_cards": null },
-    { "name": "Reckless",  "bluff_tendency": 100, "starting_cards": null },
-    { "name": "LuckyDuke", "bluff_tendency": 50,  "starting_cards": ["Duke", "Duke"] }
+    { "name": "Honest",    "bluff_tendency": 0,   "challenge_tendency": 75,  "starting_cards": null },
+    { "name": "Balanced",  "bluff_tendency": 50,  "challenge_tendency": 50,  "starting_cards": null },
+    { "name": "Reckless",  "bluff_tendency": 100, "challenge_tendency": 25,  "starting_cards": null },
+    { "name": "LuckyDuke", "bluff_tendency": 50,  "challenge_tendency": 50,  "starting_cards": ["Duke", "Duke"] }
   ]
 }
 ```
@@ -70,7 +70,8 @@ All fields are optional within each player entry — omit or set `null` to use r
 | `games` | `100` | Number of games to simulate |
 | `seat_order` | `"random"` | `"random"` — reshuffle seating each game; `"fixed"` — keep seats constant |
 | `name` | random | Display name; omit for a random historical name |
-| `bluff_tendency` | random | 0–100; omit for a fresh random value each game |
+| `bluff_tendency` | random | 0–100; omit for a fresh random value each game — controls action bluffs and bluff-blocks |
+| `challenge_tendency` | random | 0–100; omit for a fresh random value each game — controls willingness to challenge opponents |
 | `starting_cards` | random | `["Duke", "Captain"]` to fix the starting hand; omit for random |
 
 Valid character names: `Duke`, `Assassin`, `Captain`, `Ambassador`, `Contessa`. A maximum of 3 players may request the same character (deck contains 3 copies of each).
@@ -153,20 +154,31 @@ Valid character names: `Duke`, `Assassin`, `Captain`, `Ambassador`, `Contessa`. 
 
 ## CPU Personalities
 
-Each CPU player is assigned a random **bluff tendency** (0–100) at the start of a game. This single value shapes their entire play style:
+Each CPU player has two independent tendencies, both drawn from a stable hash of their name in interactive mode, or set via the simulation config:
 
-| Tendency | Personality | Action bluffs | Bluff-blocks | Challenge rate |
-|---|---|---|---|---|
-| 0–20 | 😇 Straight-laced | Never | Never | Lower |
-| 21–40 | 🤔 Cautious | Rarely | Rarely | Slightly lower |
-| 41–60 | 😏 Balanced | Sometimes | Sometimes | Neutral |
-| 61–80 | 😈 Bold | Often | Often | Slightly higher |
-| 81–100 | 🎲 Reckless | Frequently | Frequently | Higher |
+### Bluff tendency (0–100)
+
+Controls how willing the player is to claim characters they don't hold, and to bluff-block incoming actions.
+
+| Tendency | Personality | Action bluffs | Bluff-blocks |
+|---|---|---|---|
+| 0–20 | 😇 Straight-laced | Never | Never |
+| 21–40 | 🤔 Cautious | Rarely | Rarely |
+| 41–60 | 😏 Balanced | Sometimes | Sometimes |
+| 61–80 | 😈 Bold | Often | Often |
+| 81–100 | 🎲 Reckless | Frequently | Frequently |
 
 Specifically:
 - **Action weight for bluffs** scales from `0` (tendency 0, never bluff) to `4` (tendency 100, equally weighted with honest plays).
 - **Bluff-block probability** scales from `0%` to `50%`.
-- **Challenge probability** is scaled by `0.75×` at tendency 0 up to `1.25×` at tendency 100 — a reckless bluffer assumes opponents bluff freely too.
+
+### Challenge tendency (0–100)
+
+Controls how willing the player is to challenge opponents' character claims.
+
+- Scale ranges from `0.75×` base probability at tendency 0 to `1.25×` at tendency 100.
+- At tendency 0 a player almost never challenges; at 100 they challenge very aggressively.
+- This is independent of bluff tendency — a player can be a committed bluffer who rarely challenges, or an honest player who questions everyone.
 
 CPU personalities are announced before the first turn so you can size up your opponents.
 

@@ -64,8 +64,9 @@ _CPU_NAMES: list[str] = [
 @dataclass
 class PlayerConfig:
     """Configuration for one player slot in a simulation."""
-    name: str | None = None            # None → pick a random name once at load time
-    bluff_tendency: int | None = None  # None → pick a fresh random value each game
+    name: str | None = None               # None → pick a random name once at load time
+    bluff_tendency: int | None = None     # None → pick a fresh random value each game
+    challenge_tendency: int | None = None # None → pick a fresh random value each game
     starting_cards: list[str] | None = None  # None → deal randomly each game
                                              # e.g. ["Duke", "Captain"]
 
@@ -100,6 +101,9 @@ def _validate_config(cfg: SimConfig) -> None:
         slot = f"Player {_SLOT_LABELS[i]}"
         if p.bluff_tendency is not None and not (0 <= p.bluff_tendency <= 100):
             raise ValueError(f"{slot}: bluff_tendency must be 0–100, got {p.bluff_tendency}")
+
+        if p.challenge_tendency is not None and not (0 <= p.challenge_tendency <= 100):
+            raise ValueError(f"{slot}: challenge_tendency must be 0–100, got {p.challenge_tendency}")
 
         if p.starting_cards is not None:
             if len(p.starting_cards) != 2:
@@ -148,7 +152,8 @@ def load_sim_config(path: str | Path) -> SimConfig:
         raw_cards = raw.get("starting_cards")
         players.append(PlayerConfig(
             name=raw.get("name") or next(name_iter, f"CPU-{len(players)+1}"),
-            bluff_tendency=raw.get("bluff_tendency"),       # None → random per game
+            bluff_tendency=raw.get("bluff_tendency"),         # None → random per game
+            challenge_tendency=raw.get("challenge_tendency"), # None → random per game
             starting_cards=[c.strip() for c in raw_cards] if raw_cards else None,
         ))
 
@@ -168,21 +173,25 @@ SAMPLE_CONFIG = """\
     {
       "name": "Honest",
       "bluff_tendency": 0,
+      "challenge_tendency": 50,
       "starting_cards": null
     },
     {
       "name": "Balanced",
       "bluff_tendency": 50,
+      "challenge_tendency": 50,
       "starting_cards": null
     },
     {
       "name": "Reckless",
       "bluff_tendency": 100,
+      "challenge_tendency": 50,
       "starting_cards": null
     },
     {
       "name": "LuckyDuke",
       "bluff_tendency": 50,
+      "challenge_tendency": 50,
       "starting_cards": ["Duke", "Duke"]
     }
   ]
@@ -199,16 +208,23 @@ seat_order   : "random" — reshuffle seating each game (fair tendency compariso
                "fixed"  — keep seats constant (measures first-mover advantage)
 
 players      : list of 2–6 player slots (all fields optional)
-  name           : display name; omit or null for a random historical name
-  bluff_tendency : 0–100; omit or null for a fresh random value each game
-                   0   = never bluffs (😇 Straight-laced)
-                   25  = rarely bluffs (🤔 Cautious)
-                   50  = sometimes bluffs (😏 Balanced)
-                   75  = often bluffs (😈 Bold)
-                   100 = bluffs as freely as plays honestly (🎲 Reckless)
-  starting_cards : ["Duke","Captain"] to fix starting hand; omit or null for random
-                   Valid names: Duke, Assassin, Captain, Ambassador, Contessa
-                   (max 3 players may request the same character)
+  name               : display name; omit or null for a random historical name
+  bluff_tendency     : 0–100; omit or null for a fresh random value each game
+                       controls willingness to claim characters not in hand, and
+                       to bluff-block incoming actions
+                       0   = never bluffs (😇 Straight-laced)
+                       25  = rarely bluffs (🤔 Cautious)
+                       50  = sometimes bluffs (😏 Balanced)
+                       75  = often bluffs (😈 Bold)
+                       100 = bluffs as freely as plays honestly (🎲 Reckless)
+  challenge_tendency : 0–100; omit or null for a fresh random value each game
+                       controls willingness to challenge opponents' claims
+                       0   = almost never challenges
+                       50  = challenges at a neutral rate
+                       100 = challenges aggressively
+  starting_cards     : ["Duke","Captain"] to fix starting hand; omit or null for random
+                       Valid names: Duke, Assassin, Captain, Ambassador, Contessa
+                       (max 3 players may request the same character)
 """
 
 
@@ -221,6 +237,7 @@ class SlotStats:
     label: str                          # "A", "B", …
     name: str
     bluff_tendency: int | None          # None = was random per game
+    challenge_tendency: int | None      # None = was random per game
     starting_cards: list[str] | None    # None = random per game
     seat: int | None = None             # set only when seat_order = "fixed"
     wins: int = 0
@@ -234,6 +251,10 @@ class SlotStats:
     @property
     def tendency_display(self) -> str:
         return str(self.bluff_tendency) if self.bluff_tendency is not None else "random"
+
+    @property
+    def challenge_display(self) -> str:
+        return str(self.challenge_tendency) if self.challenge_tendency is not None else "random"
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +303,7 @@ def run_simulation(
             label=_SLOT_LABELS[i],
             name=pc.name or f"CPU-{i+1}",
             bluff_tendency=pc.bluff_tendency,
+            challenge_tendency=pc.challenge_tendency,
             starting_cards=pc.starting_cards,
             seat=seat,
         ))
@@ -314,6 +336,7 @@ def run_simulation(
             slot_idx = seat_to_slot[seat]
             pc = config.players[slot_idx]
             tendency = pc.bluff_tendency if pc.bluff_tendency is not None else random.randint(0, 100)
+            challenge = pc.challenge_tendency if pc.challenge_tendency is not None else random.randint(0, 100)
             hand = _deal_hand(deck, pc.starting_cards)
             player = Player(
                 player_id=seat,
@@ -323,7 +346,11 @@ def run_simulation(
                 is_human=False,
             )
             seat_players[seat] = player
-            ai_players[seat] = AIStrategy(player, bluff_tendency=tendency)
+            ai_players[seat] = AIStrategy(
+                player,
+                bluff_tendency=tendency,
+                challenge_tendency=challenge,
+            )
 
         players = [seat_players[seat] for seat in range(num_players)]
         state = GameState(players=players, deck=deck)

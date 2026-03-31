@@ -32,6 +32,16 @@ def _tendency_from_name(name: str) -> int:
     return int(digest, 16) % 100
 
 
+def _challenge_tendency_from_name(name: str) -> int:
+    """Derive a stable 0–99 challenge tendency from a CPU player's name.
+
+    Uses a different salt ("_challenge") so the value differs from the
+    bluff tendency even for the same name.
+    """
+    digest = hashlib.md5((name + "_challenge").encode()).hexdigest()
+    return int(digest, 16) % 100
+
+
 def build_deck() -> list[Card]:
     """Standard Coup deck: 3 copies of each of the 5 characters (15 cards total)."""
     cards = [Card(character=char) for char in Character for _ in range(3)]
@@ -74,12 +84,11 @@ def _print_player_summary(config: SimConfig) -> None:
     """Print a compact pre-game summary of each player's configuration."""
     print()
     for i, pc in enumerate(config.players):
-        label = AIStrategy.__new__(AIStrategy)
-        label.bluff_tendency = pc.bluff_tendency if pc.bluff_tendency is not None else 50
-        tendency_str = str(pc.bluff_tendency) if pc.bluff_tendency is not None else "random"
+        bluff_str = str(pc.bluff_tendency) if pc.bluff_tendency is not None else "random"
+        challenge_str = str(pc.challenge_tendency) if pc.challenge_tendency is not None else "random"
         cards_str = " + ".join(pc.starting_cards) if pc.starting_cards else "random"
         seat_str = f"  seat {i+1}" if config.seat_order == "fixed" else ""
-        print(f"  {_SLOT_LABELS[i]}{seat_str}  {pc.name:<14}  tendency {tendency_str:<6}  cards: {cards_str}")
+        print(f"  {_SLOT_LABELS[i]}{seat_str}  {pc.name:<14}  bluff {bluff_str:<6}  challenge {challenge_str:<6}  cards: {cards_str}")
     print()
 
 
@@ -91,29 +100,34 @@ def _print_report(stats: list[SlotStats], config: SimConfig) -> None:
     rows = []
     sort_key = (lambda x: x.seat) if fixed_seats else (lambda x: -x.wins)
     for s in sorted(stats, key=sort_key):
-        ai_label = AIStrategy.__new__(AIStrategy)
-        ai_label.bluff_tendency = s.bluff_tendency if s.bluff_tendency is not None else 50
         pct = s.wins / num_games * 100
         seat_col = str(s.seat + 1) if fixed_seats and s.seat is not None else ""
         rows.append((s.label, seat_col, s.name, s.tendency_display,
-                     ai_label.personality_label, s.cards_display, s.wins, pct))
+                     s.challenge_display, s.cards_display, s.wins, pct))
 
-    # Column widths
-    name_w  = max(len(r[2]) for r in rows)
-    cards_w = max(len(r[5]) for r in rows)
-    total_w = 6 + (7 if fixed_seats else 0) + name_w + 11 + 22 + cards_w + 14
+    # Column widths (at least as wide as the header)
+    name_w      = max(len(r[2]) for r in rows)
+    name_w      = max(name_w, len("Name"))
+    bluff_w     = max(len(r[3]) for r in rows)
+    bluff_w     = max(bluff_w, len("Bluff"))
+    challenge_w = max(len(r[4]) for r in rows)
+    challenge_w = max(challenge_w, len("Challenge"))
+    cards_w     = max(len(r[5]) for r in rows)
+    cards_w     = max(cards_w, len("Starting Cards"))
+    total_w = (6 + (7 if fixed_seats else 0) + name_w + 2
+               + bluff_w + 2 + challenge_w + 2 + cards_w + 2 + 12)
 
     sep = "─" * total_w
     seat_hdr = f"{'Seat':<7}" if fixed_seats else ""
     print(f"\n  Simulation complete — {num_games:,} games  ({config.seat_order} seating)\n")
     print(f"  {sep}")
-    print(f"  {'Slot':<6}{seat_hdr}{'Name':<{name_w+2}}{'Tendency':<11}{'Personality':<22}"
-          f"{'Starting Cards':<{cards_w+2}}{'Wins':>5}  {'Win%':>5}")
+    print(f"  {'Slot':<6}{seat_hdr}{'Name':<{name_w+2}}{'Bluff':<{bluff_w+2}}"
+          f"{'Challenge':<{challenge_w+2}}{'Starting Cards':<{cards_w+2}}{'Wins':>5}  {'Win%':>5}")
     print(f"  {sep}")
-    for label, seat, name, tendency, personality, cards, wins, pct in rows:
+    for label, seat, name, tendency, challenge, cards, wins, pct in rows:
         seat_col = f"{seat:<7}" if fixed_seats else ""
-        print(f"  {label:<6}{seat_col}{name:<{name_w+2}}{tendency:<11}{personality:<22}"
-              f"{cards:<{cards_w+2}}{wins:>5}  {pct:>4.1f}%")
+        print(f"  {label:<6}{seat_col}{name:<{name_w+2}}{tendency:<{bluff_w+2}}"
+              f"{challenge:<{challenge_w+2}}{cards:<{cards_w+2}}{wins:>5}  {pct:>4.1f}%")
     print(f"  {sep}\n")
 
 
@@ -137,7 +151,11 @@ def run_interactive_mode(num_players: int, pause_seconds: float) -> None:
     state = GameState(players=players, deck=deck)
 
     ai_players = {
-        p.player_id: AIStrategy(p, bluff_tendency=_tendency_from_name(p.name))
+        p.player_id: AIStrategy(
+            p,
+            bluff_tendency=_tendency_from_name(p.name),
+            challenge_tendency=_challenge_tendency_from_name(p.name),
+        )
         for p in players if not p.is_human
     }
 
@@ -145,7 +163,10 @@ def run_interactive_mode(num_players: int, pause_seconds: float) -> None:
     if ai_players:
         print("  CPU personalities:")
         for ai in ai_players.values():
-            print(f"    {ai.player.name}: {ai.personality_label} (bluff tendency {ai.bluff_tendency})")
+            print(
+                f"    {ai.player.name}: {ai.personality_label} "
+                f"(bluff {ai.bluff_tendency}, challenge {ai.challenge_tendency})"
+            )
         print()
 
     engine = GameEngine(state=state, ui=ui, ai_players=ai_players)
@@ -175,7 +196,7 @@ def main() -> None:
         help="Number of players for interactive mode (2–6, default 4)"
     )
     parser.add_argument(
-        "--pause", type=float, nargs="?", const=1.0, default=0.0, metavar="SECONDS",
+        "--pause", type=float, nargs="?", const=7.0, default=7.0, metavar="SECONDS",
         help="Pause after each CPU action (default 1.0s when flag given without a value)"
     )
 

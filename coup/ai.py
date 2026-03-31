@@ -16,14 +16,17 @@ _CHAR_SCORE: dict[Character, int] = {
 
 class AIStrategy:
     """
-    CPU strategy with a configurable bluff_tendency (0–100).
+    CPU strategy with configurable bluff_tendency and challenge_tendency (both 0–100).
 
-    bluff_tendency controls three interrelated behaviours:
+    bluff_tendency controls two interrelated behaviours:
       - Action selection: higher tendency → more willing to claim characters
         the player does not actually hold.
       - Blocking:         higher tendency → more willing to bluff-block.
-      - Challenging:      higher tendency → slightly more paranoid / trigger-happy
-        (a serial bluffer assumes opponents bluff freely too).
+
+    challenge_tendency controls one behaviour:
+      - Challenging:      higher tendency → more likely to challenge opponents'
+        character claims.  A natural interpretation: a player who challenges
+        often is naturally sceptical, regardless of how much they bluff themselves.
 
     The AI only uses information it would legitimately know:
       - Its own hand (unrevealed cards)
@@ -39,9 +42,15 @@ class AIStrategy:
         (100, "🎲 Reckless"),
     ]
 
-    def __init__(self, player: Player, bluff_tendency: int = 50) -> None:
+    def __init__(
+        self,
+        player: Player,
+        bluff_tendency: int = 50,
+        challenge_tendency: int = 50,
+    ) -> None:
         self.player = player
         self.bluff_tendency = max(0, min(100, bluff_tendency))
+        self.challenge_tendency = max(0, min(100, challenge_tendency))
 
     @property
     def personality_label(self) -> str:
@@ -140,9 +149,8 @@ class AIStrategy:
         There are 3 copies of each character in the 15-card deck.
         The more copies we can account for, the more likely the claim is a bluff.
 
-        bluff_tendency also scales the base probabilities: a reckless bluffer
-        assumes opponents bluff freely too, so challenges more aggressively.
-        Scale ranges from 0.75× (tendency 0) to 1.25× (tendency 100).
+        challenge_tendency scales the base probabilities:
+        scale ranges from 0.75× (tendency 0) to 1.25× (tendency 100).
         """
         our_count = sum(1 for c in self.player.alive_cards if c.character == claimed)
         revealed_count = sum(
@@ -157,8 +165,8 @@ class AIStrategy:
         # Base probabilities by how many copies are accounted for
         base_prob = {2: 0.55, 1: 0.20, 0: 0.08}[accounted_for]
 
-        # Scale by personality: 0.75 at tendency 0, 1.0 at 50, 1.25 at 100
-        scale = 0.75 + (self.bluff_tendency / 200)
+        # Scale by challenge_tendency: 0.75 at tendency 0, 1.0 at 50, 1.25 at 100
+        scale = 0.75 + (self.challenge_tendency / 200)
         return random.random() < (base_prob * scale)
 
     # ------------------------------------------------------------------ #
