@@ -42,6 +42,14 @@ class AIStrategy:
         (100, "🎲 Reckless"),
     ]
 
+    _CHALLENGE_LABELS: list[tuple[int, str]] = [
+        (20, "🫡 Trusting"),
+        (40, "🤫 Guarded"),
+        (60, "🧐 Skeptical"),
+        (80, "⚔️ Confrontational"),
+        (100, "🔥 Paranoid"),
+    ]
+
     def __init__(
         self,
         player: Player,
@@ -58,6 +66,20 @@ class AIStrategy:
             if self.bluff_tendency <= threshold:
                 return label
         return self._PERSONALITY_LABELS[-1][1]
+
+    @property
+    def challenge_label(self) -> str:
+        for threshold, label in self._CHALLENGE_LABELS:
+            if self.challenge_tendency <= threshold:
+                return label
+        return self._CHALLENGE_LABELS[-1][1]
+
+    @property
+    def challenge_label(self) -> str:
+        for threshold, label in self._CHALLENGE_LABELS:
+            if self.challenge_tendency <= threshold:
+                return label
+        return self._CHALLENGE_LABELS[-1][1]
 
     # ------------------------------------------------------------------ #
     #  Action selection                                                    #

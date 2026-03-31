@@ -96,38 +96,59 @@ def _print_report(stats: list[SlotStats], config: SimConfig) -> None:
     fixed_seats = config.seat_order == "fixed"
     num_games = config.games
 
+    def _bluff_label(t: int | None) -> str:
+        if t is None:
+            return ""
+        ai = AIStrategy.__new__(AIStrategy)
+        ai.bluff_tendency = t
+        return ai.personality_label
+
+    def _challenge_label(t: int | None) -> str:
+        if t is None:
+            return ""
+        ai = AIStrategy.__new__(AIStrategy)
+        ai.challenge_tendency = t
+        return ai.challenge_label
+
     # Build column values first so we can size columns dynamically
     rows = []
     sort_key = (lambda x: x.seat) if fixed_seats else (lambda x: -x.wins)
     for s in sorted(stats, key=sort_key):
         pct = s.wins / num_games * 100
         seat_col = str(s.seat + 1) if fixed_seats and s.seat is not None else ""
-        rows.append((s.label, seat_col, s.name, s.tendency_display,
-                     s.challenge_display, s.cards_display, s.wins, pct))
+        rows.append((
+            s.label, seat_col, s.name,
+            s.tendency_display, _bluff_label(s.bluff_tendency),
+            s.challenge_display, _challenge_label(s.challenge_tendency),
+            s.cards_display, s.wins, pct,
+        ))
 
     # Column widths (at least as wide as the header)
-    name_w      = max(len(r[2]) for r in rows)
-    name_w      = max(name_w, len("Name"))
-    bluff_w     = max(len(r[3]) for r in rows)
-    bluff_w     = max(bluff_w, len("Bluff"))
-    challenge_w = max(len(r[4]) for r in rows)
-    challenge_w = max(challenge_w, len("Challenge"))
-    cards_w     = max(len(r[5]) for r in rows)
-    cards_w     = max(cards_w, len("Starting Cards"))
-    total_w = (6 + (7 if fixed_seats else 0) + name_w + 2
-               + bluff_w + 2 + challenge_w + 2 + cards_w + 2 + 12)
+    def _col_w(idx: int, header: str) -> int:
+        return max(max(len(r[idx]) for r in rows), len(header))
+
+    name_w       = _col_w(2, "Name")
+    bluff_w      = _col_w(3, "Bluff")
+    bluff_lbl_w  = _col_w(4, "Bluff style")
+    chall_w      = _col_w(5, "Challenge")
+    chall_lbl_w  = _col_w(6, "Challenge style")
+    cards_w      = _col_w(7, "Starting Cards")
+    total_w = (6 + (7 if fixed_seats else 0)
+               + name_w + 2 + bluff_w + 2 + bluff_lbl_w + 2
+               + chall_w + 2 + chall_lbl_w + 2 + cards_w + 2 + 12)
 
     sep = "─" * total_w
     seat_hdr = f"{'Seat':<7}" if fixed_seats else ""
     print(f"\n  Simulation complete — {num_games:,} games  ({config.seat_order} seating)\n")
     print(f"  {sep}")
-    print(f"  {'Slot':<6}{seat_hdr}{'Name':<{name_w+2}}{'Bluff':<{bluff_w+2}}"
-          f"{'Challenge':<{challenge_w+2}}{'Starting Cards':<{cards_w+2}}{'Wins':>5}  {'Win%':>5}")
+    print(f"  {'Slot':<6}{seat_hdr}{'Name':<{name_w+2}}{'Bluff':<{bluff_w+2}}{'Bluff style':<{bluff_lbl_w+2}}"
+          f"{'Challenge':<{chall_w+2}}{'Challenge style':<{chall_lbl_w+2}}"
+          f"{'Starting Cards':<{cards_w+2}}{'Wins':>5}  {'Win%':>5}")
     print(f"  {sep}")
-    for label, seat, name, tendency, challenge, cards, wins, pct in rows:
+    for label, seat, name, bluff, bluff_lbl, chall, chall_lbl, cards, wins, pct in rows:
         seat_col = f"{seat:<7}" if fixed_seats else ""
-        print(f"  {label:<6}{seat_col}{name:<{name_w+2}}{tendency:<{bluff_w+2}}"
-              f"{challenge:<{challenge_w+2}}{cards:<{cards_w+2}}{wins:>5}  {pct:>4.1f}%")
+        print(f"  {label:<6}{seat_col}{name:<{name_w+2}}{bluff:<{bluff_w+2}}{bluff_lbl:<{bluff_lbl_w+2}}"
+              f"{chall:<{chall_w+2}}{chall_lbl:<{chall_lbl_w+2}}{cards:<{cards_w+2}}{wins:>5}  {pct:>4.1f}%")
     print(f"  {sep}\n")
 
 
@@ -164,7 +185,7 @@ def run_interactive_mode(num_players: int, pause_seconds: float) -> None:
         print("  CPU personalities:")
         for ai in ai_players.values():
             print(
-                f"    {ai.player.name}: {ai.personality_label} "
+                f"    {ai.player.name}: {ai.personality_label} / {ai.challenge_label} "
                 f"(bluff {ai.bluff_tendency}, challenge {ai.challenge_tendency})"
             )
         print()
