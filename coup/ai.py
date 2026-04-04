@@ -50,15 +50,25 @@ class AIStrategy:
         (100, "🔥 Paranoid"),
     ]
 
+    _CONFIDENCE_LABELS: list[tuple[int, str]] = [
+        (20, "😬 Jittery"),
+        (40, "😐 Uncertain"),
+        (60, "🙂 Composed"),
+        (80, "😎 Assured"),
+        (100, "🦁 Intimidating"),
+    ]
+
     def __init__(
         self,
         player: Player,
         bluff_tendency: int = 50,
         challenge_tendency: int = 50,
+        confidence: int = 50,
     ) -> None:
         self.player = player
         self.bluff_tendency = max(0, min(100, bluff_tendency))
         self.challenge_tendency = max(0, min(100, challenge_tendency))
+        self.confidence = max(0, min(100, confidence))
 
     @property
     def personality_label(self) -> str:
@@ -75,11 +85,11 @@ class AIStrategy:
         return self._CHALLENGE_LABELS[-1][1]
 
     @property
-    def challenge_label(self) -> str:
-        for threshold, label in self._CHALLENGE_LABELS:
-            if self.challenge_tendency <= threshold:
+    def confidence_label(self) -> str:
+        for threshold, label in self._CONFIDENCE_LABELS:
+            if self.confidence <= threshold:
                 return label
-        return self._CHALLENGE_LABELS[-1][1]
+        return self._CONFIDENCE_LABELS[-1][1]
 
     # ------------------------------------------------------------------ #
     #  Action selection                                                    #
@@ -155,24 +165,29 @@ class AIStrategy:
         if is_block_challenge:
             # Actor challenging the blocker's claim
             claimed = ctx.block_claimed_character
-            if claimed is None:
+            if claimed is None or ctx.blocker is None:
                 return False
-            return self._should_challenge_claim(state, claimed)
+            return self._should_challenge_claim(state, claimed, ctx.blocker.confidence)
         else:
             # Opponent challenging the actor's claim
             claimed = ctx.claimed_character
             if claimed is None:
                 return False
-            return self._should_challenge_claim(state, claimed)
+            return self._should_challenge_claim(state, claimed, ctx.actor.confidence)
 
-    def _should_challenge_claim(self, state: GameState, claimed: Character) -> bool:
+    def _should_challenge_claim(
+        self, state: GameState, claimed: Character, actor_confidence: int
+    ) -> bool:
         """
         Decide whether to challenge a claim using only public/own-hand information.
         There are 3 copies of each character in the 15-card deck.
         The more copies we can account for, the more likely the claim is a bluff.
 
-        challenge_tendency scales the base probabilities:
-        scale ranges from 0.75× (tendency 0) to 1.25× (tendency 100).
+        Two personality axes scale the base probability multiplicatively:
+          - challenge_tendency: 0.75× at 0, 1.0× at 50, 1.25× at 100
+          - actor_confidence:   1.25× at 0, 1.0× at 50, 0.75× at 100
+        A high-confidence actor is less likely to be challenged;
+        a high challenge_tendency challenger is more likely to call the bluff.
         """
         our_count = sum(1 for c in self.player.alive_cards if c.character == claimed)
         revealed_count = sum(
@@ -187,9 +202,12 @@ class AIStrategy:
         # Base probabilities by how many copies are accounted for
         base_prob = {2: 0.55, 1: 0.20, 0: 0.08}[accounted_for]
 
-        # Scale by challenge_tendency: 0.75 at tendency 0, 1.0 at 50, 1.25 at 100
-        scale = 0.75 + (self.challenge_tendency / 200)
-        return random.random() < (base_prob * scale)
+        # challenge_tendency scale: 0.75 at 0, 1.0 at 50, 1.25 at 100
+        tendency_scale = 0.75 + (self.challenge_tendency / 200)
+        # actor_confidence scale: 1.25 at 0, 1.0 at 50, 0.75 at 100 (inverted)
+        confidence_scale = 1.25 - (actor_confidence / 200)
+
+        return random.random() < (base_prob * tendency_scale * confidence_scale)
 
     # ------------------------------------------------------------------ #
     #  Influence sacrifice                                                 #

@@ -42,6 +42,12 @@ def _challenge_tendency_from_name(name: str) -> int:
     return int(digest, 16) % 100
 
 
+def _confidence_from_name(name: str) -> int:
+    """Derive a stable 0–99 confidence value from a CPU player's name."""
+    digest = hashlib.md5((name + "_confidence").encode()).hexdigest()
+    return int(digest, 16) % 100
+
+
 def build_deck() -> list[Card]:
     """Standard Coup deck: 3 copies of each of the 5 characters (15 cards total)."""
     cards = [Card(character=char) for char in Character for _ in range(3)]
@@ -110,6 +116,13 @@ def _print_report(stats: list[SlotStats], config: SimConfig) -> None:
         ai.challenge_tendency = t
         return ai.challenge_label
 
+    def _confidence_label(t: int | None) -> str:
+        if t is None:
+            return ""
+        ai = AIStrategy.__new__(AIStrategy)
+        ai.confidence = t
+        return ai.confidence_label
+
     # Build column values first so we can size columns dynamically
     rows = []
     sort_key = (lambda x: x.seat) if fixed_seats else (lambda x: -x.wins)
@@ -120,6 +133,7 @@ def _print_report(stats: list[SlotStats], config: SimConfig) -> None:
             s.label, seat_col, s.name,
             s.tendency_display, _bluff_label(s.bluff_tendency),
             s.challenge_display, _challenge_label(s.challenge_tendency),
+            s.confidence_display, _confidence_label(s.confidence),
             s.cards_display, s.wins, pct,
         ))
 
@@ -127,15 +141,18 @@ def _print_report(stats: list[SlotStats], config: SimConfig) -> None:
     def _col_w(idx: int, header: str) -> int:
         return max(max(len(r[idx]) for r in rows), len(header))
 
-    name_w       = _col_w(2, "Name")
-    bluff_w      = _col_w(3, "Bluff")
-    bluff_lbl_w  = _col_w(4, "Bluff style")
-    chall_w      = _col_w(5, "Challenge")
-    chall_lbl_w  = _col_w(6, "Challenge style")
-    cards_w      = _col_w(7, "Starting Cards")
+    name_w      = _col_w(2, "Name")
+    bluff_w     = _col_w(3, "Bluff")
+    bluff_lbl_w = _col_w(4, "Bluff style")
+    chall_w     = _col_w(5, "Challenge")
+    chall_lbl_w = _col_w(6, "Challenge style")
+    conf_w      = _col_w(7, "Conf")
+    conf_lbl_w  = _col_w(8, "Confidence style")
+    cards_w     = _col_w(9, "Starting Cards")
     total_w = (6 + (7 if fixed_seats else 0)
                + name_w + 2 + bluff_w + 2 + bluff_lbl_w + 2
-               + chall_w + 2 + chall_lbl_w + 2 + cards_w + 2 + 12)
+               + chall_w + 2 + chall_lbl_w + 2
+               + conf_w + 2 + conf_lbl_w + 2 + cards_w + 2 + 12)
 
     sep = "─" * total_w
     seat_hdr = f"{'Seat':<7}" if fixed_seats else ""
@@ -143,12 +160,14 @@ def _print_report(stats: list[SlotStats], config: SimConfig) -> None:
     print(f"  {sep}")
     print(f"  {'Slot':<6}{seat_hdr}{'Name':<{name_w+2}}{'Bluff':<{bluff_w+2}}{'Bluff style':<{bluff_lbl_w+2}}"
           f"{'Challenge':<{chall_w+2}}{'Challenge style':<{chall_lbl_w+2}}"
+          f"{'Conf':<{conf_w+2}}{'Confidence style':<{conf_lbl_w+2}}"
           f"{'Starting Cards':<{cards_w+2}}{'Wins':>5}  {'Win%':>5}")
     print(f"  {sep}")
-    for label, seat, name, bluff, bluff_lbl, chall, chall_lbl, cards, wins, pct in rows:
+    for label, seat, name, bluff, bluff_lbl, chall, chall_lbl, conf, conf_lbl, cards, wins, pct in rows:
         seat_col = f"{seat:<7}" if fixed_seats else ""
         print(f"  {label:<6}{seat_col}{name:<{name_w+2}}{bluff:<{bluff_w+2}}{bluff_lbl:<{bluff_lbl_w+2}}"
-              f"{chall:<{chall_w+2}}{chall_lbl:<{chall_lbl_w+2}}{cards:<{cards_w+2}}{wins:>5}  {pct:>4.1f}%")
+              f"{chall:<{chall_w+2}}{chall_lbl:<{chall_lbl_w+2}}"
+              f"{conf:<{conf_w+2}}{conf_lbl:<{conf_lbl_w+2}}{cards:<{cards_w+2}}{wins:>5}  {pct:>4.1f}%")
     print(f"  {sep}\n")
 
 
@@ -171,22 +190,25 @@ def run_interactive_mode(num_players: int, pause_seconds: float) -> None:
 
     state = GameState(players=players, deck=deck)
 
-    ai_players = {
-        p.player_id: AIStrategy(
-            p,
-            bluff_tendency=_tendency_from_name(p.name),
-            challenge_tendency=_challenge_tendency_from_name(p.name),
-        )
-        for p in players if not p.is_human
-    }
+    ai_players = {}
+    for p in players:
+        if not p.is_human:
+            conf = _confidence_from_name(p.name)
+            p.confidence = conf
+            ai_players[p.player_id] = AIStrategy(
+                p,
+                bluff_tendency=_tendency_from_name(p.name),
+                challenge_tendency=_challenge_tendency_from_name(p.name),
+                confidence=conf,
+            )
 
     # Announce CPU personalities so the human can size up their opponents
     if ai_players:
         print("  CPU personalities:")
         for ai in ai_players.values():
             print(
-                f"    {ai.player.name}: {ai.personality_label} / {ai.challenge_label} "
-                f"(bluff {ai.bluff_tendency}, challenge {ai.challenge_tendency})"
+                f"    {ai.player.name}: {ai.personality_label} / {ai.challenge_label} / {ai.confidence_label} "
+                f"(bluff {ai.bluff_tendency}, challenge {ai.challenge_tendency}, confidence {ai.confidence})"
             )
         print()
 

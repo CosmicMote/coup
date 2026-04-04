@@ -16,6 +16,7 @@ class Player:
     coins: int = 2
     hand: list[Card] = field(default_factory=list)
     is_human: bool = False
+    confidence: int = 50  # 0–100; how convincing this player appears when claiming characters
 
     @property
     def alive_cards(self) -> list[Card]:
