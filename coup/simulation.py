@@ -267,6 +267,7 @@ players      : list of 2–6 player slots (all fields optional)
 class SlotStats:
     label: str                          # "A", "B", …
     name: str
+    ai_type: str                        # "basic" | "adaptive"
     bluff_tendency: int | None          # None = was random per game
     challenge_tendency: int | None      # None = was random per game
     confidence: int | None              # None = was random per game
@@ -286,6 +287,8 @@ class SlotStats:
 
     @property
     def challenge_display(self) -> str:
+        if self.ai_type == "adaptive":
+            return "model"   # derived from opponent profiles, not a fixed tendency
         return str(self.challenge_tendency) if self.challenge_tendency is not None else "random"
 
     @property
@@ -338,6 +341,7 @@ def run_simulation(
         stats.append(SlotStats(
             label=_SLOT_LABELS[i],
             name=pc.name or f"CPU-{i+1}",
+            ai_type=pc.ai_type,
             bluff_tendency=pc.bluff_tendency,
             challenge_tendency=pc.challenge_tendency,
             confidence=pc.confidence,
