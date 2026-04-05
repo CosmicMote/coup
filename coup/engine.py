@@ -12,10 +12,18 @@ class GameEngine:
         state: GameState,
         ui: UIProtocol,
         ai_players: dict[int, object],  # player_id -> AIStrategy
+        observers: list[object] | None = None,  # objects with notify(event, **kw)
     ) -> None:
         self.state = state
         self.ui = ui
         self.ai_players = ai_players
+        self.observers: list[object] = observers or []
+
+    def _notify(self, event_type, **kwargs) -> None:
+        """Dispatch a game event to the UI and all registered observers."""
+        self.ui.notify(event_type, **kwargs)
+        for obs in self.observers:
+            obs.notify(event_type, **kwargs)
 
     # ------------------------------------------------------------------ #
     #  Main loop                                                           #
@@ -25,13 +33,13 @@ class GameEngine:
         """Drive the game to completion. Returns the winning Player."""
         while len(self.state.active_players) > 1:
             current = self.state.current_player
-            self.ui.notify(EventType.TURN_START, player=current, state=self.state)
+            self._notify(EventType.TURN_START, player=current, state=self.state)
             self._run_turn()
             if len(self.state.active_players) > 1:
                 self._advance_turn()
 
         winner = self.state.active_players[0]
-        self.ui.notify(EventType.GAME_OVER, winner=winner, state=self.state)
+        self._notify(EventType.GAME_OVER, winner=winner, state=self.state)
         return winner
 
     # ------------------------------------------------------------------ #
@@ -54,24 +62,24 @@ class GameEngine:
             if self._open_challenge_window(ctx):
                 actor_proved = self._resolve_challenge(ctx)
                 if not actor_proved:
-                    self.ui.notify(EventType.ACTION_FAILED, ctx=ctx, state=self.state)
+                    self._notify(EventType.ACTION_FAILED, ctx=ctx, state=self.state)
                     return
                 # Actor proved — challenger already lost influence; action continues
 
         # Step 3: Block window
         if rules.is_blockable(ctx.action):
             if self._open_block_window(ctx):
-                self.ui.notify(EventType.BLOCK_DECLARED, ctx=ctx, state=self.state)
+                self._notify(EventType.BLOCK_DECLARED, ctx=ctx, state=self.state)
                 if self._actor_challenge_block(ctx):
                     blocker_proved = self._resolve_block_challenge(ctx)
                     if blocker_proved:
                         # Actor lost the block challenge; action is blocked
-                        self.ui.notify(EventType.ACTION_BLOCKED, ctx=ctx, state=self.state)
+                        self._notify(EventType.ACTION_BLOCKED, ctx=ctx, state=self.state)
                         return
                     # Blocker was bluffing; block fails; action continues
                 else:
                     # Actor did not challenge; block stands
-                    self.ui.notify(EventType.ACTION_BLOCKED, ctx=ctx, state=self.state)
+                    self._notify(EventType.ACTION_BLOCKED, ctx=ctx, state=self.state)
                     return
 
         # Step 4: Execute
@@ -105,7 +113,7 @@ class GameEngine:
             target=target,
             claimed_character=claimed_character,
         )
-        self.ui.notify(EventType.ACTION_DECLARED, ctx=ctx, state=self.state)
+        self._notify(EventType.ACTION_DECLARED, ctx=ctx, state=self.state)
         return ctx
 
     # ------------------------------------------------------------------ #
@@ -117,7 +125,7 @@ class GameEngine:
         for player in self._opponents_in_order(ctx.actor):
             if self._get_challenge_response(player, ctx, is_block_challenge=False):
                 ctx.challenger = player
-                self.ui.notify(EventType.CHALLENGE_ISSUED, ctx=ctx, state=self.state)
+                self._notify(EventType.CHALLENGE_ISSUED, ctx=ctx, state=self.state)
                 return True
         return False
 
@@ -142,7 +150,7 @@ class GameEngine:
         wants_challenge = self._get_challenge_response(ctx.actor, ctx, is_block_challenge=True)
         if wants_challenge:
             ctx.block_challenger = ctx.actor
-            self.ui.notify(EventType.BLOCK_CHALLENGE_ISSUED, ctx=ctx, state=self.state)
+            self._notify(EventType.BLOCK_CHALLENGE_ISSUED, ctx=ctx, state=self.state)
         return wants_challenge
 
     # ------------------------------------------------------------------ #
@@ -162,7 +170,7 @@ class GameEngine:
         if matching:
             # Actor proves it: reveal the card, shuffle back, draw a replacement
             proved_card = matching[0]
-            self.ui.notify(
+            self._notify(
                 EventType.CHALLENGE_LOST,
                 ctx=ctx,
                 player_proved=actor,
@@ -173,7 +181,7 @@ class GameEngine:
             self._lose_influence(ctx.challenger, "lost challenge")
             return True
         else:
-            self.ui.notify(EventType.CHALLENGE_WON, ctx=ctx, state=self.state)
+            self._notify(EventType.CHALLENGE_WON, ctx=ctx, state=self.state)
             self._lose_influence(actor, "caught bluffing")
             return False
 
@@ -189,7 +197,7 @@ class GameEngine:
 
         if matching:
             proved_card = matching[0]
-            self.ui.notify(
+            self._notify(
                 EventType.BLOCK_CHALLENGE_LOST,
                 ctx=ctx,
                 player_proved=blocker,
@@ -200,7 +208,7 @@ class GameEngine:
             self._lose_influence(ctx.actor, "lost block challenge")
             return True
         else:
-            self.ui.notify(EventType.BLOCK_CHALLENGE_WON, ctx=ctx, state=self.state)
+            self._notify(EventType.BLOCK_CHALLENGE_WON, ctx=ctx, state=self.state)
             self._lose_influence(blocker, "caught bluffing on block")
             return False
 
@@ -239,7 +247,7 @@ class GameEngine:
         elif action == Action.EXCHANGE:
             self._do_exchange(actor)
 
-        self.ui.notify(EventType.ACTION_EXECUTED, ctx=ctx, state=self.state)
+        self._notify(EventType.ACTION_EXECUTED, ctx=ctx, state=self.state)
 
     def _do_exchange(self, actor: Player) -> None:
         drawn: list[Card] = []
@@ -269,9 +277,9 @@ class GameEngine:
             return
         card = self._get_card_to_lose(player, reason)
         card.revealed = True
-        self.ui.notify(EventType.INFLUENCE_LOST, player=player, card=card, reason=reason, state=self.state)
+        self._notify(EventType.INFLUENCE_LOST, player=player, card=card, reason=reason, state=self.state)
         if not player.is_alive:
-            self.ui.notify(EventType.PLAYER_ELIMINATED, player=player, state=self.state)
+            self._notify(EventType.PLAYER_ELIMINATED, player=player, state=self.state)
 
     def _replace_proved_card(self, player: Player, card: Card) -> None:
         """Shuffle a proved card back into the deck and deal a replacement."""

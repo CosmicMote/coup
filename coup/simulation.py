@@ -10,6 +10,7 @@ from coup.constants import Character, EventType
 from coup.models import Card, Player, GameState
 from coup.engine import GameEngine
 from coup.ai import AIStrategy
+from coup.adaptive_ai import AdaptiveAIStrategy, OpponentProfile
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +69,7 @@ class PlayerConfig:
     bluff_tendency: int | None = None     # None → pick a fresh random value each game
     challenge_tendency: int | None = None # None → pick a fresh random value each game
     confidence: int | None = None         # None → pick a fresh random value each game
+    ai_type: str = "basic"                # "basic" | "adaptive"
     starting_cards: list[str] | None = None  # None → deal randomly each game
                                              # e.g. ["Duke", "Captain"]
 
@@ -108,6 +110,9 @@ def _validate_config(cfg: SimConfig) -> None:
 
         if p.confidence is not None and not (0 <= p.confidence <= 100):
             raise ValueError(f"{slot}: confidence must be 0–100, got {p.confidence}")
+
+        if p.ai_type not in ("basic", "adaptive"):
+            raise ValueError(f"{slot}: ai_type must be 'basic' or 'adaptive', got {p.ai_type!r}")
 
         if p.starting_cards is not None:
             if len(p.starting_cards) != 2:
@@ -159,6 +164,7 @@ def load_sim_config(path: str | Path) -> SimConfig:
             bluff_tendency=raw.get("bluff_tendency"),         # None → random per game
             challenge_tendency=raw.get("challenge_tendency"), # None → random per game
             confidence=raw.get("confidence"),                 # None → random per game
+            ai_type=raw.get("ai_type", "basic"),
             starting_cards=[c.strip() for c in raw_cards] if raw_cards else None,
         ))
 
@@ -177,6 +183,7 @@ SAMPLE_CONFIG = """\
   "players": [
     {
       "name": "Honest",
+      "ai_type": "basic",
       "bluff_tendency": 0,
       "challenge_tendency": 50,
       "confidence": 20,
@@ -184,6 +191,7 @@ SAMPLE_CONFIG = """\
     },
     {
       "name": "Balanced",
+      "ai_type": "basic",
       "bluff_tendency": 50,
       "challenge_tendency": 50,
       "confidence": 50,
@@ -191,17 +199,18 @@ SAMPLE_CONFIG = """\
     },
     {
       "name": "Reckless",
+      "ai_type": "basic",
       "bluff_tendency": 100,
       "challenge_tendency": 50,
       "confidence": 80,
       "starting_cards": null
     },
     {
-      "name": "LuckyDuke",
+      "name": "Adaptive",
+      "ai_type": "adaptive",
       "bluff_tendency": 50,
-      "challenge_tendency": 50,
       "confidence": 50,
-      "starting_cards": ["Duke", "Duke"]
+      "starting_cards": null
     }
   ]
 }
@@ -218,6 +227,13 @@ seat_order   : "random" — reshuffle seating each game (fair tendency compariso
 
 players      : list of 2–6 player slots (all fields optional)
   name               : display name; omit or null for a random historical name
+  ai_type            : "basic" (default) or "adaptive"
+                       basic    = personality-driven random weighted selection
+                       adaptive = threat-aware scoring + opponent model that learns
+                                  bluff/challenge rates across games
+                       note: challenge_tendency is only used by the basic AI;
+                             the adaptive AI derives challenge decisions from its
+                             opponent model instead
   bluff_tendency     : 0–100; omit or null for a fresh random value each game
                        controls willingness to claim characters not in hand, and
                        to bluff-block incoming actions
@@ -331,6 +347,22 @@ def run_simulation(
 
     ui = SilentUI()
 
+    # Pre-create adaptive strategy objects so their profiles persist across games.
+    # Keyed by slot index (not seat — seats shuffle each game, slots are stable).
+    # Basic slots use None here and get a fresh AIStrategy each game as before.
+    slot_adaptive: dict[int, AdaptiveAIStrategy] = {}
+    for i, pc in enumerate(config.players):
+        if pc.ai_type == "adaptive":
+            conf = pc.confidence if pc.confidence is not None else random.randint(0, 100)
+            # Create a temporary placeholder player; reset_for_game() will replace it
+            placeholder = Player(player_id=i, name=stats[i].name, coins=2, is_human=False)
+            slot_adaptive[i] = AdaptiveAIStrategy(
+                player=placeholder,
+                profiles={},
+                bluff_tendency=pc.bluff_tendency if pc.bluff_tendency is not None else random.randint(0, 100),
+                confidence=conf,
+            )
+
     for game_num in range(1, config.games + 1):
 
         # Determine which slot sits in which seat this game
@@ -341,8 +373,6 @@ def run_simulation(
             seat_to_slot = list(range(num_players))  # slot i → seat i, always
 
         deck = _build_deck()
-        players: list[Player] = []
-        ai_players: dict[int, AIStrategy] = {}
 
         # Fixed starting cards must be dealt first (before the deck is disturbed
         # by random deals) so that requested cards are still available.
@@ -353,6 +383,7 @@ def run_simulation(
         )
 
         seat_players: dict[int, Player] = {}
+        ai_players: dict[int, object] = {}
         for seat in dealing_order:
             slot_idx = seat_to_slot[seat]
             pc = config.players[slot_idx]
@@ -369,16 +400,22 @@ def run_simulation(
                 confidence=conf,
             )
             seat_players[seat] = player
-            ai_players[seat] = AIStrategy(
-                player,
-                bluff_tendency=tendency,
-                challenge_tendency=challenge,
-                confidence=conf,
-            )
+
+            if pc.ai_type == "adaptive" and slot_idx in slot_adaptive:
+                slot_adaptive[slot_idx].reset_for_game(player)
+                ai_players[seat] = slot_adaptive[slot_idx]
+            else:
+                ai_players[seat] = AIStrategy(
+                    player,
+                    bluff_tendency=tendency,
+                    challenge_tendency=challenge,
+                    confidence=conf,
+                )
 
         players = [seat_players[seat] for seat in range(num_players)]
         state = GameState(players=players, deck=deck)
-        engine = GameEngine(state=state, ui=ui, ai_players=ai_players)
+        observers = [s for s in ai_players.values() if hasattr(s, "notify")]
+        engine = GameEngine(state=state, ui=ui, ai_players=ai_players, observers=observers)
         winner = engine.run()
 
         winner_slot_idx = seat_to_slot[winner.player_id]

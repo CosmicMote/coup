@@ -92,9 +92,10 @@ def _print_player_summary(config: SimConfig) -> None:
     for i, pc in enumerate(config.players):
         bluff_str = str(pc.bluff_tendency) if pc.bluff_tendency is not None else "random"
         challenge_str = str(pc.challenge_tendency) if pc.challenge_tendency is not None else "random"
+        conf_str = str(pc.confidence) if pc.confidence is not None else "random"
         cards_str = " + ".join(pc.starting_cards) if pc.starting_cards else "random"
         seat_str = f"  seat {i+1}" if config.seat_order == "fixed" else ""
-        print(f"  {_SLOT_LABELS[i]}{seat_str}  {pc.name:<14}  bluff {bluff_str:<6}  challenge {challenge_str:<6}  cards: {cards_str}")
+        print(f"  {_SLOT_LABELS[i]}{seat_str}  {pc.name:<14}  bluff {bluff_str:<6}  challenge {challenge_str:<6}  conf {conf_str:<6}  cards: {cards_str}")
     print()
 
 
@@ -178,7 +179,11 @@ _SLOT_LABELS = ["A", "B", "C", "D", "E", "F"]
 # Interactive mode
 # ---------------------------------------------------------------------------
 
-def run_interactive_mode(num_players: int, pause_seconds: float) -> None:
+def run_interactive_mode(
+    num_players: int, pause_seconds: float, ai_type: str = "basic"
+) -> None:
+    from coup.adaptive_ai import AdaptiveAIStrategy
+
     ui = CliUI(pause_seconds=pause_seconds)
     player_configs = ui.setup_players(num_players)  # [(name, is_human), ...]
 
@@ -195,24 +200,36 @@ def run_interactive_mode(num_players: int, pause_seconds: float) -> None:
         if not p.is_human:
             conf = _confidence_from_name(p.name)
             p.confidence = conf
-            ai_players[p.player_id] = AIStrategy(
-                p,
-                bluff_tendency=_tendency_from_name(p.name),
-                challenge_tendency=_challenge_tendency_from_name(p.name),
-                confidence=conf,
-            )
+            if ai_type == "adaptive":
+                ai_players[p.player_id] = AdaptiveAIStrategy(
+                    p,
+                    profiles={},
+                    bluff_tendency=_tendency_from_name(p.name),
+                    confidence=conf,
+                )
+            else:
+                ai_players[p.player_id] = AIStrategy(
+                    p,
+                    bluff_tendency=_tendency_from_name(p.name),
+                    challenge_tendency=_challenge_tendency_from_name(p.name),
+                    confidence=conf,
+                )
 
     # Announce CPU personalities so the human can size up their opponents
     if ai_players:
         print("  CPU personalities:")
-        for ai in ai_players.values():
-            print(
-                f"    {ai.player.name}: {ai.personality_label} / {ai.challenge_label} / {ai.confidence_label} "
-                f"(bluff {ai.bluff_tendency}, challenge {ai.challenge_tendency}, confidence {ai.confidence})"
-            )
+        for strategy in ai_players.values():
+            if isinstance(strategy, AdaptiveAIStrategy):
+                print(f"    {strategy.player.name}: 🧠 Adaptive AI (confidence {strategy.confidence})")
+            else:
+                print(
+                    f"    {strategy.player.name}: {strategy.personality_label} / {strategy.challenge_label} / {strategy.confidence_label} "
+                    f"(bluff {strategy.bluff_tendency}, challenge {strategy.challenge_tendency}, confidence {strategy.confidence})"
+                )
         print()
 
-    engine = GameEngine(state=state, ui=ui, ai_players=ai_players)
+    observers = [s for s in ai_players.values() if hasattr(s, "notify")]
+    engine = GameEngine(state=state, ui=ui, ai_players=ai_players, observers=observers)
     engine.run()
 
 
@@ -241,6 +258,10 @@ def main() -> None:
     parser.add_argument(
         "--pause", type=float, nargs="?", const=7.0, default=7.0, metavar="SECONDS",
         help="Pause after each CPU action (default 1.0s when flag given without a value)"
+    )
+    parser.add_argument(
+        "--ai", choices=["basic", "adaptive"], default="basic",
+        help="CPU AI strategy for interactive mode: 'basic' (default) or 'adaptive'"
     )
 
     # Simulation options
@@ -271,7 +292,7 @@ def main() -> None:
         if not (2 <= args.players <= 6):
             print("Error: --players must be between 2 and 6.")
             raise SystemExit(1)
-        run_interactive_mode(args.players, args.pause)
+        run_interactive_mode(args.players, args.pause, ai_type=args.ai)
 
 
 if __name__ == "__main__":
