@@ -25,9 +25,12 @@ python main.py --players 2       # 2-player game
 python main.py --players 6       # 6-player game (maximum)
 python main.py --pause           # pause 1 second after each CPU action
 python main.py --pause 2.5       # pause 2.5 seconds after each CPU action
+python main.py --ai adaptive     # use the adaptive AI for all CPU players
 ```
 
 At startup you are prompted for each player's name. **Leave a name blank** to make that slot a CPU player. CPU players are given random names drawn from a pool of historical political schemers, and each is assigned a **bluff tendency**, **challenge tendency**, and **confidence** value derived from a stable hash of their name (see [CPU Personalities](#cpu-personalities) below).
+
+The `--ai` flag controls which AI strategy all CPU players use in interactive mode. In simulation mode, each player slot specifies its own `ai_type` in the config file — see [Simulation Mode](#simulation-mode).
 
 If exactly one human player is in the game, your hand is shown at the start of every turn so you can make informed decisions about whether to bluff, challenge, or block.
 
@@ -55,10 +58,11 @@ python main.py --generate-config        # print a sample config file with field 
   "games": 500,
   "seat_order": "random",
   "players": [
-    { "name": "Honest",    "bluff_tendency": 0,   "challenge_tendency": 75, "confidence": 20,  "starting_cards": null },
-    { "name": "Balanced",  "bluff_tendency": 50,  "challenge_tendency": 50, "confidence": 50,  "starting_cards": null },
-    { "name": "Reckless",  "bluff_tendency": 100, "challenge_tendency": 25, "confidence": 80,  "starting_cards": null },
-    { "name": "LuckyDuke", "bluff_tendency": 50,  "challenge_tendency": 50, "confidence": 50,  "starting_cards": ["Duke", "Duke"] }
+    { "name": "Adaptive",  "ai_type": "adaptive", "bluff_tendency": 50,  "confidence": 50 },
+    { "name": "Honest",    "ai_type": "basic",    "bluff_tendency": 0,   "challenge_tendency": 75, "confidence": 20,  "starting_cards": null },
+    { "name": "Balanced",  "ai_type": "basic",    "bluff_tendency": 50,  "challenge_tendency": 50, "confidence": 50,  "starting_cards": null },
+    { "name": "Reckless",  "ai_type": "basic",    "bluff_tendency": 100, "challenge_tendency": 25, "confidence": 80,  "starting_cards": null },
+    { "name": "LuckyDuke", "ai_type": "basic",    "bluff_tendency": 50,  "challenge_tendency": 50, "confidence": 50,  "starting_cards": ["Duke", "Duke"] }
   ]
 }
 ```
@@ -70,8 +74,9 @@ All fields are optional within each player entry — omit or set `null` to use r
 | `games` | `100` | Number of games to simulate |
 | `seat_order` | `"random"` | `"random"` — reshuffle seating each game; `"fixed"` — keep seats constant |
 | `name` | random | Display name; omit for a random historical name |
+| `ai_type` | `"basic"` | `"basic"` or `"adaptive"` — see [AI strategies](#ai-strategies) |
 | `bluff_tendency` | random | 0–100; omit for a fresh random value each game — controls action bluffs and bluff-blocks |
-| `challenge_tendency` | random | 0–100; omit for a fresh random value each game — controls willingness to challenge opponents |
+| `challenge_tendency` | random | 0–100; omit for a fresh random value each game — controls willingness to challenge opponents (basic AI only; adaptive AI derives this from its opponent model) |
 | `confidence` | random | 0–100; omit for a fresh random value each game — how convincing this player appears; opponents are less likely to challenge high-confidence players |
 | `starting_cards` | random | `["Duke", "Captain"]` to fix the starting hand; omit for random |
 
@@ -156,6 +161,28 @@ Valid character names: `Duke`, `Assassin`, `Captain`, `Ambassador`, `Contessa`. 
 ## CPU Personalities
 
 Each CPU player has three independent attributes, all derived from a stable hash of their name in interactive mode, or set explicitly in the simulation config. They are announced before the first turn so you can size up your opponents.
+
+### AI strategies
+
+Two AI strategies are available, selectable per-player in simulation mode via `ai_type`, or globally in interactive mode via `--ai`.
+
+#### Basic AI (`ai_type: "basic"`)
+
+A personality-driven strategy that makes decisions by weighted random sampling. Action selection weights honest plays (holding the card) at `4`, general actions (Income, Foreign Aid) at `2`, and bluffs at `0`–`4` depending on `bluff_tendency`. Challenges are governed purely by `challenge_tendency` scaled against a card-accounting base probability. Predictable but fast to reason about.
+
+#### Adaptive AI (`ai_type: "adaptive"`)
+
+A threat-aware strategy that builds an opponent model across games and uses it to inform decisions. Key differences from the basic AI:
+
+- **Opponent modelling** — maintains per-opponent Bayesian estimates of bluff rate, challenge rate, and block-bluff rate. In simulation mode these profiles *persist across games*, so the AI genuinely learns its opponents' tendencies over many encounters.
+- **Threat-aware action scoring** — evaluates each legal action with a numeric score based on strategic value: elimination priority, near-coup denial, coin denial, and expected harm from spending 3 coins on Assassinate. Actions are selected via softmax over these scores rather than weighted random sampling.
+- **Card accounting** — estimates the true probability that Foreign Aid will be blocked based on how many Dukes are unaccounted for, rather than a fixed prior.
+- **Adaptive bluffing** — bluff willingness accounts for the joint probability that *all* opponents pass on challenging (not just the average single-opponent rate), and adjusts dynamically as it learns each opponent's true challenge rate.
+- **Selective challenge boosting** — only increases challenge probability beyond the card-accounting baseline for opponents it has firmly identified as above-average bluffers (bluff rate observed to be substantially higher than the baseline).
+
+The adaptive AI uses `bluff_tendency` and `confidence` from the config; `challenge_tendency` is ignored — challenge decisions are derived from the opponent model instead.
+
+**When does it outperform the basic AI?** The opponent model is most valuable against a *diverse field* — a mix of heavy bluffers and cautious players — where it can learn to challenge the Reckless player aggressively and bluff freely against the Trusting one. Against a homogeneous field (all players at the same settings) the model provides little signal and performance converges with the basic AI.
 
 ### Bluff tendency (0–100)
 
