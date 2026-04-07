@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Dev / editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Repo noise
+.git/
+.gitignore
+*.md
+notes.txt
+sim.json
+adaptive-sim.json
+
+# CLI entry point (not needed in the web image)
+main.py

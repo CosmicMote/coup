@@ -1,23 +1,64 @@
 # Coup 🎮
 
-A Python CLI implementation of the tabletop bluffing game **Coup**.
+A Python implementation of the tabletop bluffing game **Coup**, playable as a
+**browser-based web UI** or a **terminal CLI**.
 
 ---
 
-## Setup
+## Modes of play
+
+| Mode | Entry point | Description |
+|---|---|---|
+| **Web UI** | `web_main.py` | FastAPI + WebSocket backend; React frontend. Play against CPU opponents in the browser. |
+| **CLI** | `main.py` | Terminal-based interactive game or headless simulation. |
+
+---
+
+## Web UI
+
+### Docker (recommended)
 
 ```bash
-# Create and activate a virtual environment (Python 3.13+)
+docker build -t coup .
+docker run -p 8080:8080 coup
+```
+
+Open **http://localhost:8080**, enter your name, choose the number of players and
+CPU AI strategy, then click **Start Game**.
+
+### Running locally (development)
+
+```bash
+# 1 — Python backend (FastAPI on :8080)
+python -m venv venv
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # macOS / Linux
+pip install -r requirements-web.txt
+python web_main.py
+
+# 2 — React frontend (Vite dev server on :5173, proxies /api and /ws to :8080)
+cd frontend
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173**.
+
+---
+
+## CLI
+
+### Setup
+
+```bash
 python -m venv venv
 venv\Scripts\activate        # Windows
 source venv/bin/activate     # macOS / Linux
 
-# No external dependencies required — stdlib only
+# No external dependencies required for CLI — stdlib only
 ```
 
----
-
-## Running the Game
+### Running the Game
 
 ```bash
 python main.py                   # 4 players, no pause
@@ -36,7 +77,7 @@ If exactly one human player is in the game, your hand is shown at the start of e
 
 ---
 
-## Simulation Mode
+## Simulation Mode (CLI)
 
 Simulation mode runs many CPU-only games automatically to answer questions like:
 
