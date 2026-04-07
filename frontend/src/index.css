@@ -1,0 +1,80 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg:           #1a1a2e;
+  --panel:        #16213e;
+  --card-bg:      #0f3460;
+  --accent:       #e94560;
+  --accent-hover: #c73652;
+  --text:         #e0e0e0;
+  --text-muted:   #9090a0;
+  --gold:         #ffd700;
+  --green:        #4caf50;
+  --red:          #e94560;
+  --border:       #2a2a4e;
+  --radius:       8px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 8px 16px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input, select {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 15px;
+  padding: 8px 12px;
+  outline: none;
+  width: 100%;
+}
+
+input:focus, select:focus {
+  border-color: var(--accent);
+}
+
+select option {
+  background: var(--panel);
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
